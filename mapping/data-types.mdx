@@ -1,0 +1,183 @@
+---
+title: 'Data types'
+description: 'How Mapster handles primitives, enums, strings, collections, record types, POCO objects, and dictionaries.'
+---
+
+Mapster has built-in support for a wide range of .NET types. This page describes how each category is handled and what you can configure.
+
+## Primitives
+
+Converting between primitive types—`int`, `bool`, `double`, `decimal`, and their nullable equivalents—works out of the box. Any cast that is valid in C# is also valid through Mapster.
+
+```csharp
+decimal i = 123.Adapt<decimal>(); // equal to (decimal)123
+```
+
+## Enums
+
+Mapster maps enums to numerics automatically. It also converts strings to and from enums without the overhead of the built-in `Enum.ToString()`—the Mapster implementation runs at roughly double the speed.
+
+If the string is null or empty, the enum initializes to its first defined value.
+
+**Flagged enums** are fully supported:
+
+```csharp
+var e = "Read, Write, Delete".Adapt<FileShare>();
+// FileShare.Read | FileShare.Write | FileShare.Delete
+```
+
+When mapping between two different enum types, Mapster maps by value by default. To map by name instead, set the global strategy:
+
+```csharp
+TypeAdapterConfig.GlobalSettings.Default
+    .EnumMappingStrategy(EnumMappingStrategy.ByName);
+```
+
+## Strings
+
+When mapping any type to `string`, Mapster calls `ToString`. When mapping a `string` to another type, Mapster calls `Parse`:
+
+```csharp
+var s = 123.Adapt<string>(); // equal to 123.ToString()
+var i = "123".Adapt<int>();  // equal to int.Parse("123")
+```
+
+## Collections
+
+Mapster handles mapping between all common collection shapes, including various interface types:
+
+<CardGroup cols={2}>
+  <Card title="Lists and arrays" icon="list">
+    `IList<T>`, `ICollection<T>`, `IEnumerable<T>`, arrays
+  </Card>
+  <Card title="Sets and dictionaries" icon="table">
+    `ISet<T>`, `IDictionary<TKey, TValue>` and their concrete counterparts
+  </Card>
+</CardGroup>
+
+```csharp
+var list = db.Pocos.ToList();
+var target = list.Adapt<IEnumerable<Dto>>();
+```
+
+## Mappable objects
+
+Mapster resolves property values using three rules applied in order:
+
+1. **Name match** — `dest.Name = src.Name`
+2. **Get method** — `dest.Name = src.GetName()`
+3. **Flattening** — `dest.ContactName = src.Contact.Name` or `dest.Contact_Name = src.Contact.Name`
+
+The following example shows all three rules in action:
+
+```csharp
+class Staff {
+    public string Name { get; set; }
+    public int GetAge() {
+        return (DateTime.Now - this.BirthDate).TotalDays / 365.25;
+    }
+    public Staff Supervisor { get; set; }
+    // ...
+}
+
+struct StaffDto {
+    public string Name { get; set; }
+    public int Age { get; set; }
+    public string SupervisorName { get; set; }
+}
+
+var dto = staff.Adapt<StaffDto>();
+// dto.Name = staff.Name
+// dto.Age  = staff.GetAge()
+// dto.SupervisorName = staff.Supervisor.Name
+```
+
+Mappable object types include:
+
+- POCO classes, structs, and interfaces
+- Dictionary types that implement `IDictionary<string, T>`
+- Record types (class, struct, and interface)
+
+**Object to dictionary** mapping also works:
+
+```csharp
+var point = new { X = 2, Y = 3 };
+var dict = point.Adapt<Dictionary<string, int>>();
+dict["Y"].ShouldBe(3);
+```
+
+## Record types
+
+<Note>
+  Mapster treats record types as immutable. Mapping produces a new object with modified properties rather than mutating the existing one—equivalent to a C# nondestructive mutation (`with` expression).
+</Note>
+
+Behaviour differs between Mapster versions:
+
+<Tabs>
+  <Tab title="v10.0">
+    All C# records are automatically recognized as record types. The v7.4.0 restrictions on constructor count and parameter matching no longer apply.
+
+    **Default values for missing parameters**
+
+    If the source type does not have a member that maps to a constructor parameter, Mapster uses the default value for that parameter's type:
+
+    ```csharp
+    class SourceData
+    {
+        public string MyString { get; set; }
+    }
+
+    record RecordDestination(int myInt, string myString);
+
+    var result = source.Adapt<RecordDestination>();
+    // equal to: new RecordDestination(default(int), source.MyString)
+    ```
+
+    **Multiple constructors**
+
+    When a record declares more than one constructor, Mapster selects the one with the most parameters:
+
+    ```csharp
+    record MultiCtorRecord
+    {
+        public MultiCtorRecord(int myInt)
+        {
+            MyInt = myInt;
+        }
+
+        public MultiCtorRecord(int myInt, string myString) // this constructor is used
+            : this(myInt)
+        {
+            MyString = myString;
+        }
+    }
+    ```
+
+    v10.0 also adds support for custom constructor mapping, `Ignore`, and `IgnoreNullValues` on record types.
+  </Tab>
+  <Tab title="v7.4.0">
+    A record type must satisfy all of the following for automatic mapping to work:
+
+    - No property setters
+    - Exactly one non-empty constructor
+    - All constructor parameter names match the corresponding property names
+
+    ```csharp
+    class Person {
+        public string Name { get; }
+        public int Age { get; }
+
+        public Person(string name, int age) {
+            this.Name = name;
+            this.Age = age;
+        }
+    }
+
+    var src = new { Name = "Mapster", Age = 3 };
+    var target = src.Adapt<Person>();
+    ```
+
+    If your record does not meet these constraints, add a `MapToConstructor` configuration to tell Mapster which constructor to use.
+  </Tab>
+</Tabs>

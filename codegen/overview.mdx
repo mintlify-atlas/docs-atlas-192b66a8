@@ -1,0 +1,215 @@
+---
+title: "Mapster.Tool overview"
+description: "Generate DTOs, extension methods, and mapper classes at compile time using the Mapster.Tool CLI."
+---
+
+Mapster.Tool is a .NET CLI tool that reads your compiled assembly and emits C# source files for DTOs, extension methods, and mapper classes. Because the output is plain `.cs` code checked into your repository, you get compile-time validation, raw performance without runtime code generation overhead, visible mapping logic, and static analysis that can track property usage across your codebase.
+
+## Install
+
+<Steps>
+  <Step title="Create a tool manifest">
+    Skip this step if you already have a `.config/dotnet-tools.json` in your repository.
+
+    ```bash
+    dotnet new tool-manifest
+    ```
+  </Step>
+  <Step title="Install Mapster.Tool">
+    ```bash
+    dotnet tool install Mapster.Tool
+    ```
+  </Step>
+  <Step title="Install a Mapster package">
+    For a lightweight dependency with no `TypeAdapterConfig`, install the core package:
+
+    ```bash
+    dotnet add package Mapster.Core
+    ```
+
+    If you need `TypeAdapterConfig` for advanced fluent configuration, install the full package instead:
+
+    ```bash
+    dotnet add package Mapster
+    ```
+  </Step>
+</Steps>
+
+## Commands
+
+Mapster.Tool exposes three commands. Each command reads your compiled assembly and writes `.g.cs` files to the output directory.
+
+<CardGroup cols={3}>
+  <Card title="dotnet mapster model" icon="file-code">
+    Generates DTO/POCO classes from your domain entities.
+  </Card>
+  <Card title="dotnet mapster extension" icon="puzzle-piece">
+    Generates static extension methods that map between your entities and their generated DTOs.
+  </Card>
+  <Card title="dotnet mapster mapper" icon="arrows-left-right">
+    Generates mapper classes from interfaces annotated with `[Mapper]`.
+  </Card>
+</CardGroup>
+
+## CLI options
+
+| Flag | Description |
+|------|-------------|
+| `-a` | Path to the input assembly (`.dll`) |
+| `-b` | Base namespace used to compute dynamic output directories and sub-namespaces |
+| `-n` | Namespace for the generated classes |
+| `-o` | Output directory for generated files |
+| `-p` | Print full type names — useful when your DTOs and POCOs share the same short name |
+| `-r` | Generate `record` types instead of POCO classes |
+| `-s` | Skip generating files that already exist on disk |
+
+## csproj integration
+
+### Generate manually
+
+Add the following target to your `.csproj` file. Running `dotnet msbuild -t:Mapster` will build the project first, then invoke all three generation commands.
+
+```xml
+<Target Name="Mapster">
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet build" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet tool restore" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet mapster model -a &quot;$(TargetDir)$(ProjectName).dll&quot;" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet mapster extension -a &quot;$(TargetDir)$(ProjectName).dll&quot;" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet mapster mapper -a &quot;$(TargetDir)$(ProjectName).dll&quot;" />
+</Target>
+```
+
+Run generation:
+
+```bash
+dotnet msbuild -t:Mapster
+```
+
+### Generate automatically on build
+
+Use `AfterTargets="AfterBuild"` to regenerate files every time the project builds.
+
+```xml
+<Target Name="Mapster" AfterTargets="AfterBuild">
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet tool restore" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet mapster model -a &quot;$(TargetDir)$(ProjectName).dll&quot;" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet mapster extension -a &quot;$(TargetDir)$(ProjectName).dll&quot;" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet mapster mapper -a &quot;$(TargetDir)$(ProjectName).dll&quot;" />
+</Target>
+```
+
+### Clean generated files
+
+Add a `CleanGenerated` target that deletes all `*.g.cs` files:
+
+```xml
+<ItemGroup>
+  <Generated Include="**\*.g.cs" />
+</ItemGroup>
+<Target Name="CleanGenerated">
+  <Delete Files="@(Generated)" />
+</Target>
+```
+
+Run the cleanup:
+
+```bash
+dotnet msbuild -t:CleanGenerated
+```
+
+### Full type names
+
+If your POCOs and DTOs share the same short class name, add the `-p` flag to emit fully qualified type names and avoid collisions:
+
+```xml
+<Target Name="Mapster">
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet build" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet tool restore" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet mapster model -a &quot;$(TargetDir)$(ProjectName).dll&quot; -p" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet mapster extension -a &quot;$(TargetDir)$(ProjectName).dll&quot; -p" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet mapster mapper -a &quot;$(TargetDir)$(ProjectName).dll&quot; -p" />
+</Target>
+```
+
+## Dynamic outputs with `-b`
+
+The `-b` flag lets you mirror your domain namespace hierarchy into the generated output directory. Given a project structured like this:
+
+```text
+Sample.CodeGen
+└── Domains
+    ├── Sub1
+    │   └── Domain1
+    └── Sub2
+        └── Domain2
+```
+
+Pass `-b Sample.CodeGen.Domains` alongside `-n Sample.CodeGen.Generated`:
+
+```xml
+<Exec WorkingDirectory="$(ProjectDir)"
+    Command="dotnet mapster model -a &quot;$(TargetDir)$(ProjectName).dll&quot; -n Sample.CodeGen.Generated -b Sample.CodeGen.Domains" />
+```
+
+Mapster.Tool strips the base namespace prefix and recreates the sub-structure under the output namespace:
+
+```text
+Sample.CodeGen
+└── Generated
+    ├── Sub1
+    │   └── Dto1
+    └── Sub2
+        └── Dto2
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="System.IO.FileNotFoundException when running the tool">
+    If you see an error like `Unhandled exception. System.IO.FileNotFoundException: Could not load file or assembly '...'. The system cannot find the file specified.` with Mapster.Tool 8.4.1 or newer, use one of the following workarounds.
+
+    **Workaround 1 — upgrade to 8.4.2-pre01 or newer**
+
+    Check the latest pre-release version on NuGet and update your tool manifest:
+
+    ```bash
+    dotnet tool update Mapster.Tool --version <latest-prerelease>
+    ```
+
+    **Workaround 2 — set `CopyLocalLockFileAssemblies` in your csproj**
+
+    ```xml
+    <Project Sdk="Microsoft.NET.Sdk">
+      <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+      </PropertyGroup>
+    </Project>
+    ```
+
+    **Workaround 3 — pass the property on the build command line**
+
+    ```xml
+    <Target Name="Mapster">
+      <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet build -p:CopyLocalLockFileAssemblies=true" />
+      <!-- remaining Exec elements -->
+    </Target>
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Generation strategies
+
+Choose the strategy that best fits your project layout:
+
+<CardGroup cols={3}>
+  <Card title="Attribute-based" icon="tag" href="/codegen/attribute-based">
+    Annotate domain classes with `[AdaptTo]`, `[AdaptFrom]`, or `[AdaptTwoWays]` to keep mapping declarations close to your models.
+  </Card>
+  <Card title="Fluent API" icon="wrench" href="/codegen/fluent-api">
+    Implement `ICodeGenerationRegister` in a separate assembly to configure generation without touching domain classes.
+  </Card>
+  <Card title="Interface-based" icon="sitemap" href="/codegen/interface-based">
+    Define mapping contracts through `[Mapper]` interfaces when your DTOs already exist.
+  </Card>
+</CardGroup>

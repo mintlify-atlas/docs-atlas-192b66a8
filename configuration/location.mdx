@@ -1,0 +1,140 @@
+---
+title: "Configuration location"
+description: "Learn where to place Mapster configuration — entry points, IRegister with assembly scanning, the Fork method for inline config, and attribute-based configuration."
+---
+
+## Entry point for configuration
+
+Mapster compiles configuration the first time a mapping runs. After compilation, **modifying the same config throws an exception**. For this reason, you must set configuration once — and only once — before any mapping occurs.
+
+```csharp
+// ❌ Will throw on the second ForType call — config was already compiled
+config.ForType<Poco, Dto>().Ignore("Id");
+var dto1 = poco1.Adapt<Dto>(config);
+
+config.ForType<Poco, Dto>().Ignore("Id"); // Exception: config already compiled
+var dto2 = poco2.Adapt<Dto>(config);
+```
+
+Place all configuration calls in your application's entry point, and keep mapping calls separate.
+
+<Tabs>
+  <Tab title="Program.cs / Startup.cs">
+    ```csharp
+    // Configure once at startup
+    config.ForType<Poco, Dto>().Ignore("Id");
+    ```
+  </Tab>
+  <Tab title="Global.asax.cs">
+    ```csharp
+    // Application_Start in Global.asax.cs
+    config.ForType<Poco, Dto>().Ignore("Id");
+    ```
+  </Tab>
+  <Tab title="Controller / service (mapping only)">
+    ```csharp
+    // Mapping calls — no configuration here
+    var dto1 = poco1.Adapt<Dto>(config);
+    var dto2 = poco2.Adapt<Dto>(config);
+    ```
+  </Tab>
+</Tabs>
+
+## Keeping config and mapping together with Fork
+
+Separating configuration and mapping into two files makes it easy to change one and forget to update the other. The `Fork` method lets you define config inline, right next to the mapping call that uses it.
+
+```csharp
+var dto = poco.Adapt<Dto>(config.Fork(forked => forked.ForType<Poco, Dto>().Ignore("Id")));
+```
+
+<Tip>
+Forked configs are compiled only once. On subsequent calls, `Fork` returns the cached config so there is no performance penalty for keeping config inline.
+</Tip>
+
+### Fork in generic classes or methods
+
+By default, `Fork` uses the **filename and line number** as its cache key. Inside a generic class or method, the same file and line can correspond to many different type arguments, which would cause `Fork` to return a cached config intended for different types.
+
+In generic contexts, always supply an explicit key that includes the full type names.
+
+```csharp
+IQueryable<TDto> GetItems<TPoco, TDto>()
+{
+    var forked = config.Fork(
+        f => f.ForType<TPoco, TDto>().Ignore("Id"),
+        $"MyKey|{typeof(TPoco).FullName}|{typeof(TDto).FullName}");
+    return db.Set<TPoco>().ProjectToType<TDto>(forked);
+}
+```
+
+## Organizing config across assemblies with IRegister
+
+When your application is large, you may want to spread configuration across multiple assemblies — for example, keeping domain mapping rules in a domain assembly and API contract rules in a web assembly.
+
+### The IRegister interface
+
+Implement `IRegister` in each assembly to define that assembly's mapping rules.
+
+```csharp
+public class MyRegister : IRegister
+{
+   public void Register(TypeAdapterConfig config)
+   {
+      config.NewConfig<TSource, TDestination>();
+
+      //OR to create or enhance an existing configuration
+      config.ForType<TSource, TDestination>();
+   }
+}
+```
+
+### Scanning assemblies
+
+Call `Scan` to automatically discover and apply every `IRegister` implementation in one or more assemblies. You can control override order by choosing the assembly scan sequence.
+
+<CodeGroup>
+
+```csharp Global settings
+TypeAdapterConfig.GlobalSettings.Scan(assembly1, assembly2, assemblyN);
+```
+
+```csharp Config instance
+var config = new TypeAdapterConfig();
+config.Scan(assembly1, assembly2, assemblyN);
+```
+
+</CodeGroup>
+
+### Apply method
+
+If you use an external IoC or MEF container to resolve `IRegister` implementations, use `Apply` to register them without scanning.
+
+```csharp
+// Apply all registers resolved from a MEF container
+var registers = container.GetExports<IRegister>();
+config.Apply(registers);
+```
+
+`Apply` also lets you apply individual registers selectively.
+
+```csharp
+// Apply only a specific register (useful in tests)
+var register = new MockingRegister();
+config.Apply(register);
+```
+
+## Attribute-based configuration
+
+You can co-locate configuration with your POCO classes using attributes. This keeps the mapping intent visible directly on the model.
+
+```csharp
+[AdaptTo(typeof(StudentDto), PreserveReference = true)]
+public class Student {
+    ...
+}
+```
+
+<Note>
+Attribute-based configuration is a convenience for simple settings. For more complex rules — such as custom member mappings — use `NewConfig` or `ForType` in a dedicated entry point or `IRegister` implementation.
+</Note>

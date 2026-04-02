@@ -1,0 +1,117 @@
+---
+title: Before and after mapping
+description: Run initialization, validation, or side-effect logic before or after Mapster maps an object using BeforeMapping and AfterMapping hooks.
+---
+
+Mapster lets you attach callbacks that run immediately before or after the mapping process. These hooks are useful for initializing destination objects, running validation, or performing any work that Mapster's automatic mapping cannot cover.
+
+---
+
+## BeforeMapping
+
+`BeforeMapping` runs before Mapster populates any properties on the destination. Use it to initialize or prepare the destination object.
+
+```csharp
+TypeAdapterConfig<Foo, Bar>.ForType()
+    .BeforeMapping((src, result) => result.Initialize());
+```
+
+### Using the destination parameter
+
+The three-argument overload gives you access to the existing destination instance (the object being mapped *onto*). This lets you inspect or use the prior state of the destination before Mapster overwrites it.
+
+```csharp
+TypeAdapterConfig<IEnumerable<int>, IEnumerable<int>>.NewConfig()
+    .BeforeMapping((src, result, destination) =>
+    {
+        if (!ReferenceEquals(result, destination) && destination != null
+            && result is ICollection<int> resultCollection)
+        {
+            foreach (var item in destination)
+            {
+                resultCollection.Add(item);
+            }
+        }
+    });
+
+IEnumerable<int> source      = new List<int> { 1, 2, 3 };
+IEnumerable<int> destination = new List<int> { 0 };
+
+var result = source.Adapt(destination);
+
+// result == { 0, 1, 2, 3 }
+```
+
+---
+
+## AfterMapping
+
+`AfterMapping` runs after Mapster has finished populating the destination object. Use it for validation, computed fields, or any post-processing that depends on the fully mapped state.
+
+```csharp
+TypeAdapterConfig<Foo, Bar>.ForType()
+    .AfterMapping((src, result) => result.Validate());
+```
+
+### Applying AfterMapping to an interface
+
+Use `ForDestinationType` to register a hook that applies to every mapped type that implements a given interface, rather than repeating the configuration for each type pair:
+
+```csharp
+TypeAdapterConfig.GlobalSettings.ForDestinationType<IValidatable>()
+    .AfterMapping(result => result.Validate());
+```
+
+### Using the destination parameter
+
+The three-argument overload provides the prior destination value alongside the newly-mapped result, so you can combine information from both:
+
+```csharp
+TypeAdapterConfig<SimplePoco, SimpleDto>.NewConfig()
+    .ConstructUsing((simplePoco, dto) => new SimpleDto())
+    .AfterMapping((src, result, destination) => result.Name += $"{destination.Name}xxx");
+
+var poco   = new SimplePoco { Id = Guid.NewGuid(), Name = "test" };
+var oldDto = new SimpleDto { Name = "zzz" };
+
+var result = poco.Adapt(oldDto);
+
+// result.Name == "testzzzxxx"
+```
+
+---
+
+## Code generation: inline variants
+
+`BeforeMapping` and `AfterMapping` accept multi-statement actions, which cannot be translated into generated code. When using Mapster's code generation feature, use the `Inline` variants instead — they accept single expressions that can be serialized.
+
+### Single-statement inline hook
+
+```csharp
+TypeAdapterConfig.GlobalSettings.ForDestinationType<IValidatable>()
+    .AfterMappingInline(result => result.Validate());
+```
+
+### Multi-statement inline hook
+
+For multiple statements, extract the logic into a static method and reference it in the inline hook:
+
+```csharp
+public static void Validate(Dto dto)
+{
+    action1(dto);
+    action2(dto);
+    // ...
+}
+```
+
+```csharp
+TypeAdapterConfig.GlobalSettings.ForDestinationType<IValidatable>()
+    .AfterMappingInline(result => PocoToDtoMapper.Validate(result));
+```
+
+<Note>
+  Use `BeforeMappingInline` / `AfterMappingInline` only when generating code with
+  Mapster's code generation tooling. For runtime-only mappings,
+  `BeforeMapping` / `AfterMapping` are simpler and accept any lambda.
+</Note>

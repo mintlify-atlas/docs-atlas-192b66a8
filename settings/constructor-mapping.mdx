@@ -1,0 +1,110 @@
+---
+title: Constructor mapping
+description: Control how Mapster creates destination objects by providing a factory function or mapping directly to constructor parameters.
+---
+
+By default, Mapster creates destination objects using a parameterless constructor. This page covers two ways to override that behaviour: supplying a factory function with `ConstructUsing`, and enabling full constructor-parameter mapping with `MapToConstructor`.
+
+---
+
+## Custom object creation with `ConstructUsing`
+
+Use `ConstructUsing` to provide any expression that returns a destination instance. This is useful when your destination type has no public parameterless constructor, requires initializer values, or is created by a factory method.
+
+<CodeGroup>
+
+```csharp non-default constructor
+TypeAdapterConfig<TSource, TDestination>.NewConfig()
+    .ConstructUsing(src => new TDestination(src.Id, src.Name));
+```
+
+```csharp object initializer
+TypeAdapterConfig<TSource, TDestination>.NewConfig()
+    .ConstructUsing(src => new TDestination { Unmapped = "unmapped" });
+```
+
+```csharp with destination parameter
+TypeAdapterConfig<TSource, TDestination>.NewConfig()
+    .ConstructUsing((src, destination) => new TDestination(src.Id, destination?.Name ?? src.Name));
+```
+
+</CodeGroup>
+
+The overload that receives `destination` lets you inspect the existing destination instance (for example when mapping onto an already-allocated object) and use it to influence construction.
+
+---
+
+## Mapping to constructor parameters with `MapToConstructor`
+
+`MapToConstructor` tells Mapster to resolve constructor parameters by name rather than mapping only to public properties and fields. You can enable this globally or for a specific type pair.
+
+```csharp
+// Global level
+TypeAdapterConfig.GlobalSettings.Default.MapToConstructor(true);
+
+// Type pair
+TypeAdapterConfig<Poco, Dto>.NewConfig().MapToConstructor(true);
+```
+
+### Custom parameter mapping
+
+When source and destination member names differ, use `Map` with **Pascal case** parameter names to define the mapping:
+
+```csharp
+class Poco
+{
+    public string Id { get; set; }
+    // ...
+}
+
+class Dto
+{
+    public Dto(string code, ...)
+    {
+        // ...
+    }
+}
+```
+
+```csharp
+TypeAdapterConfig<Poco, Dto>.NewConfig()
+    .MapToConstructor(true)
+    .Map("Code", "Id"); // use Pascal case for constructor parameter names
+```
+
+### Constructor selection
+
+When a class has multiple constructors, Mapster automatically selects the one with the largest number of parameters that can be satisfied by the source type:
+
+```csharp
+class Poco
+{
+    public int Foo { get; set; }
+    public int Bar { get; set; }
+}
+
+class Dto
+{
+    public Dto(int foo) { ... }
+    public Dto(int foo, int bar) { ... }   // <-- Mapster selects this one
+    public Dto(int foo, int bar, int baz) { ... }
+}
+```
+
+### Explicit constructor selection
+
+If you need to pin Mapster to a specific constructor, pass a `ConstructorInfo` directly:
+
+```csharp
+var ctor = typeof(Dto).GetConstructor(new[] { typeof(int), typeof(int) });
+
+TypeAdapterConfig<Poco, Dto>.NewConfig()
+    .MapToConstructor(ctor);
+```
+
+<Note>
+  When using `MapToConstructor(true)`, Mapster still maps any remaining public
+  properties after construction. Only the parameters matched during construction
+  are resolved via the constructor; the rest follow the normal property-mapping
+  rules.
+</Note>

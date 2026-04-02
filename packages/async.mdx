@@ -1,0 +1,59 @@
+---
+title: Async mapping
+description: Perform asynchronous operations during mapping with Mapster.Async, including AfterMappingAsync and AdaptToTypeAsync.
+---
+
+`Mapster.Async` lets you run async operations as part of your mapping pipeline. Use it when a mapping step requires calling an async API — such as loading related data from a database or an external service — before the mapped object is returned.
+
+## Installation
+
+```bash
+PM> Install-Package Mapster.Async
+```
+
+## When to use async mapping
+
+Most mappings are synchronous and do not need this package. Reach for `Mapster.Async` when:
+
+- You need to resolve additional data during mapping via an async service (e.g., `UserManager.FindByIdAsync`).
+- You are using `Mapster.DependencyInjection` and an injected service exposes only async methods.
+
+<Note>
+`Mapster.Async` is designed to complement `Mapster.DependencyInjection`. Use `MapContext.Current.GetService<T>()` inside `AfterMappingAsync` to resolve services from the DI container.
+</Note>
+
+## Setup
+
+Configure async post-mapping logic with `AfterMappingAsync`:
+
+```csharp
+config.NewConfig<Poco, Dto>()
+    .AfterMappingAsync(async (poco, dto) =>
+    {
+        var userManager = MapContext.Current.GetService<UserManager>();
+        var user = await userManager.FindByIdAsync(poco.UserId);
+        dto.UserName = user.Name;
+    });
+```
+
+## Mapping
+
+Call `AdaptToTypeAsync` to perform the mapping and await the async post-mapping steps.
+
+**Using the builder API:**
+
+```csharp
+var dto = await poco.BuildAdapter()
+    .AdaptToTypeAsync<Dto>();
+```
+
+**Using an injected `IMapper` instance:**
+
+```csharp
+var dto = await _mapper.From(poco)
+    .AdaptToTypeAsync<Dto>();
+```
+
+<Warning>
+Do not use the synchronous `.Adapt<Dto>()` extension when your mapping config includes `AfterMappingAsync`. The async delegate will not be awaited and may not execute at all.
+</Warning>

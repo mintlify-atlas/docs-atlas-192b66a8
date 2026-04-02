@@ -1,0 +1,81 @@
+---
+title: "Introduction"
+description: "Mapster is a fast, zero-configuration object mapper for .NET that eliminates the boilerplate of writing mapping methods by hand."
+---
+
+## What is Mapster?
+
+Mapster maps values from one object to another — taking the tedium of writing mapping methods away from you. It works with zero configuration out of the box: if your source and destination properties share a name and a compatible type, Mapster maps them automatically. When you do need custom logic, a fluent API lets you express it in a few lines of code.
+
+<Note>
+  Mapster is designed to be a drop-in replacement for AutoMapper. If you are migrating, the `IMapper` interface and `Adapt` extension method will feel familiar.
+</Note>
+
+## Performance
+
+Mapster is engineered to be efficient in both speed and memory. Compared to AutoMapper, you can expect roughly **4× faster mapping** using only **1/3 of the memory**. With optional acceleration through the Roslyn compiler, FastExpressionCompiler (FEC), or code generation, performance improves further still.
+
+| Method                     | Mean      | Allocated |
+|---------------------------|----------:|----------:|
+| Mapster 6.0.0             | 108.59 ms | 124.36 MB |
+| Mapster 6.0.0 (Roslyn)    |  38.45 ms | 124.36 MB |
+| Mapster 6.0.0 (FEC)       |  37.03 ms | 118.26 MB |
+| Mapster 6.0.0 (Codegen)   |  34.16 ms | 124.36 MB |
+| ExpressMapper 1.9.1        | 205.78 ms | 236.51 MB |
+| AutoMapper 10.0.0          | 420.97 ms | 350.95 MB |
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Zero-config mapping" icon="wand-magic-sparkles">
+    Map between objects with matching property names without writing any configuration. Mapster infers the mapping automatically.
+  </Card>
+  <Card title="Code generation" icon="code">
+    Use Mapster.Tool to generate typed DTO classes and explicit mapper methods at compile time, enabling compile-time validation and IDE navigation.
+  </Card>
+  <Card title="Dependency injection" icon="plug">
+    Register Mapster with a single `services.AddMapster()` call and inject `IMapper` wherever you need it — compatible with the AutoMapper DI pattern.
+  </Card>
+  <Card title="Queryable projections" icon="database">
+    Call `ProjectToType<T>()` on any `IQueryable` to build efficient `SELECT` expressions that translate directly to SQL without loading full entities.
+  </Card>
+  <Card title="Rich configuration" icon="sliders">
+    Ignore properties, rename members, apply value transforms, set before/after hooks, and apply global or rule-based policies — all through a fluent API.
+  </Card>
+  <Card title="Step-into debugging" icon="bug">
+    With `ExpressionDebugger`, you can step into generated mapping code in your debugger and inspect values just like hand-written code.
+  </Card>
+</CardGroup>
+
+## Available packages
+
+Choose the packages that fit your project. Most applications only need **Mapster** itself.
+
+| Package | Description |
+|---------|-------------|
+| `Mapster` | Main package. Includes the mapping engine, fluent configuration API, and all extension methods. |
+| `Mapster.Core` | Lightweight package with attributes and interfaces only. Use this in domain/model projects that should not take a hard dependency on the full mapper. |
+| `Mapster.DependencyInjection` | Adds `IMapper` and `services.AddMapster()` for Microsoft.Extensions.DependencyInjection. |
+| `Mapster.EFCore` | Integration helpers for Entity Framework Core, including `ProjectToType` extensions on `DbSet`. |
+| `Mapster.EF6` | Same as above, for Entity Framework 6. |
+| `Mapster.JsonNet` | Support for mapping `Newtonsoft.Json` types such as `JObject` and `JArray`. |
+| `Mapster.Immutable` | Support for immutable collection types. |
+| `Mapster.Diagnostics` | Enables step-into debugging of generated mapping expressions. |
+| `ExpressionDebugger` | Underlying library for `Mapster.Diagnostics`. |
+
+In addition, **Mapster.Tool** is distributed as a .NET CLI tool (not a NuGet package reference) for code generation:
+
+| Tool | Description |
+|------|-------------|
+| `Mapster.Tool` | CLI tool that generates DTO classes and mapper extension methods from your domain models. |
+
+## When to use Mapster
+
+- You need to copy data between domain models and DTOs in an ASP.NET Core API.
+- You are projecting EF Core queries to view models without loading full entity graphs.
+- You are migrating from AutoMapper and want a faster, lower-memory alternative.
+- You want compile-time-safe mapping code generated directly into your project.
+
+<Tip>
+  Ready to start? Follow the [quickstart](/quickstart) to map your first objects in under five minutes.
+</Tip>

@@ -1,0 +1,90 @@
+---
+title: 'Basic usage'
+description: 'Adapt objects to new or existing destinations, use the BuildAdapter pattern, and pass runtime parameters through mapping.'
+---
+
+Mapster exposes a simple `Adapt` extension method that covers the most common mapping scenarios. You can map to a freshly created destination object, fill in an object you already have, or use a builder to pass runtime values through the mapping pipeline.
+
+## Mapping to a new object
+
+Call `Adapt<Destination>()` on any source object and Mapster creates the destination instance and maps values to it.
+
+```csharp
+var destObject = sourceObject.Adapt<Destination>();
+```
+
+If you are mapping from a value type (struct), use the two-type overload to avoid unnecessary boxing and unboxing:
+
+```csharp
+var dest = src.Adapt<TSource, TDestination>();
+```
+
+## Mapping to an existing object
+
+When you already hold a reference to the destination—for example, because it was created by your DI container or loaded from a database—pass it directly to `Adapt`:
+
+```csharp
+sourceObject.Adapt(destObject);
+```
+
+Mapster writes values onto `destObject` in place without creating a new instance.
+
+## Using a mapper instance
+
+When you need to inject a mapper through a DI container, Mapster provides `IMapper` and the default `Mapper` implementation in the `MapsterMapper` namespace:
+
+```csharp
+using MapsterMapper;
+
+IMapper mapper = new Mapper();
+var result = mapper.Map<TDestination>(source);
+```
+
+In most applications you will not instantiate `Mapper` directly. Instead, register it through the DI container (see the [Dependency Injection](/packages/dependency-injection) package) and receive it via constructor injection.
+
+## BuildAdapter pattern
+
+`Adapt` covers most cases, but `BuildAdapter` unlocks more advanced scenarios such as passing runtime values into the mapping pipeline.
+
+```csharp
+var dto = poco.BuildAdapter()
+              .AddParameters("user", this.User.Identity.Name)
+              .AdaptToType<SimpleDto>();
+```
+
+If you have a `Mapper` instance available, use its `From` method to start the same fluent chain:
+
+```csharp
+var dto = mapper.From(poco)
+               .AddParameters("user", this.User.Identity.Name)
+               .AdaptToType<SimpleDto>();
+```
+
+## Passing runtime parameters
+
+Use `BuildAdapter` together with a type configuration that reads from `MapContext.Current.Parameters` to wire runtime values—such as the current user—into computed properties.
+
+<Steps>
+  <Step title="Configure the mapping">
+    Reference the parameter by name inside a `Map` call on your config:
+
+    ```csharp
+    TypeAdapterConfig<Poco, Dto>.NewConfig()
+        .Map(dest => dest.CreatedBy,
+             src => MapContext.Current.Parameters["user"]);
+    ```
+  </Step>
+  <Step title="Supply the value at call time">
+    Pass the runtime value when you invoke the mapping:
+
+    ```csharp
+    var dto = poco.BuildAdapter()
+                  .AddParameters("user", this.User.Identity.Name)
+                  .AdaptToType<Dto>();
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  `MapContext.Current` is only populated when you go through `BuildAdapter` (or `mapper.From`). Calling plain `Adapt` without adding parameters will result in `MapContext.Current` being `null`, so accessing `.Parameters` will throw.
+</Note>

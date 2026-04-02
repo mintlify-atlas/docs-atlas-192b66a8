@@ -1,0 +1,70 @@
+---
+title: Immutable collections
+description: Map to and from .NET immutable collection types such as ImmutableList, ImmutableArray, and ImmutableDictionary with Mapster.Immutable.
+---
+
+`Mapster.Immutable` enables mapping support for the immutable collection types in `System.Collections.Immutable`. Without this package, Mapster cannot construct immutable collections because they lack the mutable setters it relies on by default.
+
+## Installation
+
+```bash
+PM> Install-Package Mapster.Immutable
+```
+
+## Setup
+
+Call `EnableImmutableMapping` on your `TypeAdapterConfig` instance once during startup, before any mappings are compiled.
+
+<CodeGroup>
+
+```csharp Global config
+TypeAdapterConfig.GlobalSettings.EnableImmutableMapping();
+```
+
+```csharp Named config
+config.EnableImmutableMapping();
+```
+
+</CodeGroup>
+
+## Supported types
+
+After calling `EnableImmutableMapping`, Mapster can map to any of the following destination types:
+
+<CardGroup cols={2}>
+  <Card title="Interfaces" icon="circle-dot">
+    - `IImmutableDictionary<,>`
+    - `IImmutableList<>`
+    - `IImmutableQueue<>`
+    - `IImmutableSet<>`
+    - `IImmutableStack<>`
+  </Card>
+  <Card title="Concrete types" icon="cube">
+    - `ImmutableArray<>`
+    - `ImmutableDictionary<,>`
+    - `ImmutableHashSet<>`
+    - `ImmutableList<>`
+    - `ImmutableQueue<>`
+    - `ImmutableSortedDictionary<,>`
+    - `ImmutableSortedSet<>`
+    - `ImmutableStack<>`
+  </Card>
+</CardGroup>
+
+## Usage example
+
+Once enabled, use the standard Mapster API — no additional configuration per type is required.
+
+```csharp
+var source = new List<string> { "alpha", "beta", "gamma" };
+
+// Map to ImmutableList<string>
+var immutable = source.Adapt<ImmutableList<string>>();
+
+// Map to ImmutableArray<string>
+var array = source.Adapt<ImmutableArray<string>>();
+```
+
+<Note>
+`EnableImmutableMapping` must be called before the first mapping involving an immutable type is compiled. In ASP.NET Core applications, call it inside `ConfigureServices` or equivalent startup code.
+</Note>

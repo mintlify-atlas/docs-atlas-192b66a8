@@ -1,0 +1,89 @@
+---
+title: "Configuration for nested mapping"
+description: "Control how Mapster applies configuration to nested and child object mappings, including per-type registration and the Fork method for scoped settings."
+---
+
+## How nested mapping works
+
+When Mapster maps a parent object, it separately maps each child or nested object it encounters. Configuration set on the parent type does **not** automatically propagate to the child types. Each type pair in the object graph requires its own configuration entry.
+
+Consider the following model:
+
+```csharp
+class ParentPoco
+{
+    public string Id { get; set; }
+    public List<ChildPoco> Children { get; set; }
+    public string Name { get; set; }
+}
+
+class ChildPoco
+{
+    public string Id { get; set; }
+    public List<GrandChildPoco> GrandChildren { get; set; }
+}
+
+class GrandChildPoco
+{
+    public string Id { get; set; }
+}
+```
+
+If you configure `PreserveReference` only on the parent mapping, child and grandchild mappings are unaffected.
+
+```csharp
+TypeAdapterConfig<ParentPoco, ParentDto>.NewConfig()
+    .PreserveReference(true);
+// ChildPoco and GrandChildPoco do NOT get PreserveReference
+```
+
+## Registering each type pair
+
+To apply the same setting throughout the entire object graph, register each type pair explicitly.
+
+```csharp
+TypeAdapterConfig<ParentPoco, ParentDto>.NewConfig()
+    .PreserveReference(true);
+TypeAdapterConfig<ChildPoco, ChildDto>.NewConfig()
+    .PreserveReference(true);
+TypeAdapterConfig<GrandChildPoco, GrandChildDto>.NewConfig()
+    .PreserveReference(true);
+```
+
+## Using global settings
+
+Alternatively, if you want a setting to apply to **all** mappings in the application, set it on the global default.
+
+```csharp
+TypeAdapterConfig.GlobalSettings.Default.PreserveReference(true);
+```
+
+<Note>
+Global settings affect every type mapping. If you need the setting to apply only to a specific object graph, use `Fork` instead of modifying `GlobalSettings`.
+</Note>
+
+## Scoped settings with Fork
+
+The `Fork` method lets you define settings that propagate through a specific mapping — including all nested types — without touching the global config. This keeps your intent local and avoids unintended side effects elsewhere in the application.
+
+```csharp
+TypeAdapterConfig<ParentPoco, ParentDto>.NewConfig()
+    .Fork(config => config.Default.PreserveReference(true));
+```
+
+Settings applied inside `Fork` cascade down through all nested mappings triggered by `ParentPoco → ParentDto`, while other mappings are unaffected.
+
+### Ignoring null or empty strings
+
+Mapster's built-in `IgnoreNullValues` ignores only `null`. To also ignore empty strings in a nested mapping without affecting global behavior, use `Fork` with a custom `MapToTargetWith` rule.
+
+```csharp
+TypeAdapterConfig<ParentPoco, ParentDto>.NewConfig()
+    .Fork(config => config.ForType<string, string>()
+        .MapToTargetWith((src, dest) => string.IsNullOrEmpty(src) ? dest : src)
+    );
+```
+
+<Tip>
+`Fork` is the right tool whenever you need a setting scoped to one object graph. It avoids both the verbosity of registering every nested pair and the broad impact of changing `GlobalSettings`.
+</Tip>

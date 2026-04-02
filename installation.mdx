@@ -1,0 +1,140 @@
+---
+title: "Installation"
+description: "Add Mapster to your .NET project via NuGet, and optionally install the Mapster.Tool CLI for code generation."
+---
+
+## Install the main package
+
+For most projects, install the `Mapster` package. It includes the mapping engine, all extension methods, and the fluent configuration API.
+
+<Steps>
+  <Step title="Add Mapster to your project">
+    Run one of the following commands in your project directory:
+
+    <CodeGroup>
+
+    ```bash .NET CLI
+    dotnet add package Mapster
+    ```
+
+    ```powershell Package Manager Console
+    Install-Package Mapster
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Verify the installation">
+    Open any `.cs` file in your project and confirm that `using Mapster;` resolves without errors after restoring packages.
+  </Step>
+</Steps>
+
+## Optional packages
+
+Install additional packages only when you need their specific functionality.
+
+### Mapster.Core — lightweight reference package
+
+Use `Mapster.Core` in projects (such as domain or model libraries) that need Mapster attributes and interfaces but should not take a dependency on the full mapping engine.
+
+<CodeGroup>
+
+```bash .NET CLI
+dotnet add package Mapster.Core
+```
+
+```powershell Package Manager Console
+Install-Package Mapster.Core
+```
+
+</CodeGroup>
+
+<Note>
+  If you only reference `Mapster.Core` in a project, you cannot call `Adapt<T>()` or use `TypeAdapterConfig` there. Those APIs live in `Mapster`. Install `Mapster.Core` in model/domain assemblies and `Mapster` in the assemblies that perform the actual mapping.
+</Note>
+
+### Mapster.DependencyInjection — ASP.NET Core integration
+
+Adds `IMapper` and the `services.AddMapster()` extension for Microsoft.Extensions.DependencyInjection.
+
+<CodeGroup>
+
+```bash .NET CLI
+dotnet add package Mapster.DependencyInjection
+```
+
+```powershell Package Manager Console
+Install-Package Mapster.DependencyInjection
+```
+
+</CodeGroup>
+
+### Other integration packages
+
+<CodeGroup>
+
+```bash EF Core
+dotnet add package Mapster.EFCore
+```
+
+```bash EF6
+dotnet add package Mapster.EF6
+```
+
+```bash Newtonsoft.Json
+dotnet add package Mapster.JsonNet
+```
+
+```bash Immutable collections
+dotnet add package Mapster.Immutable
+```
+
+```bash Diagnostics / step-into debugging
+dotnet add package Mapster.Diagnostics
+```
+
+</CodeGroup>
+
+## Install Mapster.Tool
+
+`Mapster.Tool` is a .NET local tool that generates DTO classes and mapper extension methods from your domain models. It is not a NuGet package reference — you install it as a dotnet tool.
+
+<Steps>
+  <Step title="Create a tool manifest (if you don't have one)">
+    A tool manifest (`dotnet-tools.json`) pins tool versions for your repository. Skip this step if the file already exists.
+
+    ```bash
+    dotnet new tool-manifest
+    ```
+  </Step>
+
+  <Step title="Install Mapster.Tool">
+    ```bash
+    dotnet tool install Mapster.Tool
+    ```
+
+    This adds `Mapster.Tool` to `.config/dotnet-tools.json` and makes the `dotnet mapster` command available in the project directory.
+  </Step>
+
+  <Step title="Restore tools on a fresh clone">
+    On other machines or in CI, restore all local tools with:
+
+    ```bash
+    dotnet tool restore
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Once installed, run `dotnet mapster --help` to see the available `model`, `extension`, and `mapper` subcommands. See the code generation documentation for the full usage guide.
+</Tip>
+
+## Package compatibility summary
+
+| Package | When to install |
+|---------|-----------------|
+| `Mapster` | Any project that calls `Adapt<T>()` or configures `TypeAdapterConfig` |
+| `Mapster.Core` | Model/domain projects that declare `[AdaptTo]` attributes or implement Mapster interfaces, without performing mapping |
+| `Mapster.DependencyInjection` | ASP.NET Core or any project using Microsoft DI that needs `IMapper` |
+| `Mapster.EFCore` | Projects using Entity Framework Core with `ProjectToType` projections |
+| `Mapster.Tool` | Projects that want compile-time DTO and mapper code generation |

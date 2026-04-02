@@ -1,0 +1,102 @@
+---
+title: Dependency injection
+description: Inject services into your Mapster mapping configuration using Mapster.DependencyInjection, IMapper, and ServiceMapper.
+---
+
+`Mapster.DependencyInjection` lets you resolve services from your DI container inside mapping configuration, and inject `IMapper` into controllers and services.
+
+## Installation
+
+```bash
+PM> Install-Package Mapster.DependencyInjection
+```
+
+## Setup
+
+Register `TypeAdapterConfig` and `ServiceMapper` during application startup.
+
+<Steps>
+  <Step title="Create and register TypeAdapterConfig">
+    Add your config as a singleton so it is shared across the application.
+
+    ```csharp
+    var config = new TypeAdapterConfig();
+    // Or use the global instance:
+    // var config = TypeAdapterConfig.GlobalSettings;
+    services.AddSingleton(config);
+    ```
+  </Step>
+  <Step title="Register ServiceMapper">
+    Register `IMapper` with the appropriate lifetime for your use case.
+
+    ```csharp
+    services.AddScoped<IMapper, ServiceMapper>();
+    ```
+  </Step>
+</Steps>
+
+<Note>
+The lifetime of `ServiceMapper` depends on the services you inject into mapping configuration. Use **singleton** if you only inject singleton services, **scoped** or **transient** if any injected service has a shorter lifetime.
+</Note>
+
+### Shorthand with AddMapster
+
+If you do not need to inject services into your mapping configuration, you can use the shorthand that registers `IMapper` as a transient `Mapper` instance:
+
+```csharp
+services.AddMapster();
+```
+
+<Note>
+`AddMapster()` registers `IMapper` as `Transient<IMapper, Mapper>`. Use the manual setup with `ServiceMapper` (above) when you need to resolve DI services inside mapping rules via `MapContext.Current.GetService<T>()`.
+</Note>
+
+## Injecting services into mapping configuration
+
+Use `MapContext.Current.GetService<T>()` inside a mapping rule to resolve a service at mapping time.
+
+```csharp
+config.NewConfig<Poco, Dto>()
+    .Map(dest => dest.Name, src => MapContext.Current.GetService<INameFormatter>().Format(src.Name));
+```
+
+<Warning>
+`MapContext.Current` is only available during an active mapping call. Do not store or use it outside of a mapping delegate.
+</Warning>
+
+## Using IMapper in your classes
+
+Inject `IMapper` via the constructor and call `.Map<TDestination>()` to perform mapping.
+
+```csharp
+public class FooService {
+    private readonly IMapper _mapper;
+
+    public FooService(IMapper mapper) {
+        _mapper = mapper;
+    }
+
+    public void DoSomething(Poco poco) {
+        var dto = _mapper.Map<Dto>(poco);
+        ...
+    }
+}
+```
+
+<Tip>
+When service injection is configured, always map through the `IMapper` instance rather than calling `poco.Adapt<Dto>()` directly. The static adapter does not run through the DI-aware `ServiceMapper` and will not resolve your injected services.
+</Tip>
+
+## Lifetime guidance
+
+<CardGroup cols={3}>
+  <Card title="Singleton" icon="circle-dot">
+    Safe when every service resolved via `MapContext.Current.GetService<T>()` is itself registered as a singleton.
+  </Card>
+  <Card title="Scoped" icon="arrows-rotate">
+    Use when any injected service is scoped (e.g., a database context). This is the most common choice in ASP.NET Core applications.
+  </Card>
+  <Card title="Transient" icon="bolt">
+    Use when any injected service is transient and you need a fresh mapper instance per resolution.
+  </Card>
+</CardGroup>

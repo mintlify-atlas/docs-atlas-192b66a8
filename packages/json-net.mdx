@@ -1,0 +1,59 @@
+---
+title: Json.NET (Newtonsoft.Json)
+description: Map between Newtonsoft.Json types (JObject, JArray, JToken) and .NET objects with Mapster.JsonNet.
+---
+
+`Mapster.JsonNet` adds conversion support for Newtonsoft.Json types, letting you map between `JToken`, `JArray`, `JObject`, and your POCO classes without writing manual serialization code.
+
+## Installation
+
+```bash
+PM> Install-Package Mapster.JsonNet
+```
+
+## Setup
+
+Call `EnableJsonMapping` on your `TypeAdapterConfig` instance once during startup, before any mappings are compiled.
+
+<CodeGroup>
+
+```csharp Global config
+TypeAdapterConfig.GlobalSettings.EnableJsonMapping();
+```
+
+```csharp Named config
+config.EnableJsonMapping();
+```
+
+</CodeGroup>
+
+## What this enables
+
+Once enabled, Mapster can handle the following conversions automatically:
+
+<CardGroup cols={2}>
+  <Card title="POCO ↔ Json.NET types" icon="arrows-left-right">
+    Map between `JToken`, `JArray`, and `JObject` and your own .NET classes in either direction.
+  </Card>
+  <Card title="Json.NET types ↔ string" icon="file-code">
+    Serialize a `JToken` (or subtype) to a `string`, and deserialize a `string` back to a Json.NET type.
+  </Card>
+</CardGroup>
+
+## Usage example
+
+After calling `EnableJsonMapping()`, you can adapt a `JObject` to a typed class or vice versa using the standard Mapster API:
+
+```csharp
+// JObject → POCO
+var jobject = JObject.Parse(@"{ ""name"": ""Alice"", ""age"": 30 }");
+var dto = jobject.Adapt<PersonDto>();
+
+// POCO → JObject
+var person = new PersonDto { Name = "Bob", Age = 25 };
+var json = person.Adapt<JObject>();
+```
+
+<Note>
+`EnableJsonMapping` must be called before the first mapping is compiled. In ASP.NET Core applications, call it inside `ConfigureServices` or equivalent startup code.
+</Note>

@@ -1,0 +1,155 @@
+---
+title: Ignoring members
+description: Exclude specific properties from mapping using Ignore, IgnoreIf, IgnoreNullValues, IgnoreNonMapped, AdaptIgnore, and rule-based predicates.
+---
+
+By default, Mapster maps every public property and field whose name matches between source and destination. This page covers all the ways you can exclude members from that process.
+
+---
+
+## Ignore a specific member
+
+Use the `Ignore` method to exclude a destination property by name:
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>
+    .NewConfig()
+    .Ignore(dest => dest.Id);
+```
+
+---
+
+## Ignore only mapped members
+
+Use `IgnoreNonMapped` to restrict mapping to only the members you explicitly configure. All other members are silently skipped:
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>
+    .NewConfig()
+    .Map(dest => dest.Id, src => src.Id)
+    .Map(dest => dest.Name, src => src.Name)
+    .IgnoreNonMapped(true);
+```
+
+---
+
+## Ignore conditionally with `IgnoreIf`
+
+`IgnoreIf` skips mapping a destination property when a predicate — evaluated against both source and destination — returns `true`. When the condition is met, the property is left entirely unchanged on the destination.
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>
+    .NewConfig()
+    .IgnoreIf((src, dest) => !string.IsNullOrEmpty(dest.Name), dest => dest.Name);
+```
+
+<Note>
+  `IgnoreIf` differs from a conditional `Map`: a conditional `Map` assigns `null`
+  when the condition is not met, whereas `IgnoreIf` leaves the destination
+  property untouched.
+</Note>
+
+---
+
+## Ignore null source values
+
+By default, Mapster overwrites destination members even when the source value is `null`. Enable `IgnoreNullValues` to copy only non-null values — useful for partial-update (merge) scenarios:
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>
+    .NewConfig()
+    .IgnoreNullValues(true);
+```
+
+---
+
+## Ignore using attributes
+
+### AdaptIgnore
+
+Decorate a property with `[AdaptIgnore]` to exclude it from mapping regardless of which type pair is in use. The attribute applies to both source and destination sides by default:
+
+```csharp
+public class Product
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+
+    [AdaptIgnore]
+    public decimal Price { get; set; }
+}
+```
+
+To restrict the ignore to one side, pass a `MemberSide` argument:
+
+```csharp
+public class Product
+{
+    [AdaptIgnore(MemberSide.Source)]
+    public decimal Price { get; set; }
+}
+```
+
+In the example above, `Price` is ignored only when `Product` is the source type.
+
+### IgnoreAttribute — respect third-party ignore markers
+
+If your model already carries attributes such as `[JsonIgnore]`, you can tell Mapster to honour them without touching the model:
+
+```csharp
+TypeAdapterConfig.GlobalSettings.Default
+    .IgnoreAttribute(typeof(JsonIgnoreAttribute));
+```
+
+`IgnoreAttribute` applies to both source and destination. To restrict it to one side, use `IgnoreMember` instead:
+
+```csharp
+config.IgnoreMember((member, side) =>
+    member.HasCustomAttribute(typeof(NotMapAttribute)) && side == MemberSide.Source);
+```
+
+---
+
+## Rule-based ignoring with `IgnoreMember`
+
+`IgnoreMember` accepts a predicate that receives the member model and which side of the mapping it appears on. Use it for broad, convention-driven exclusion rules.
+
+<AccordionGroup>
+  <Accordion title="Ignore all fields (keep only properties)">
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.Default
+        .IgnoreMember((member, side) => member.Info is FieldInfo);
+    ```
+  </Accordion>
+
+  <Accordion title="Ignore navigation properties (allow only primitive types)">
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.Default
+        .IgnoreMember((member, side) => !validTypes.Contains(member.Type));
+    ```
+  </Accordion>
+
+  <Accordion title="Ignore types outside System namespaces">
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.Default
+        .IgnoreMember((member, side) => !member.Type.Namespace.StartsWith("System"));
+    ```
+  </Accordion>
+
+  <Accordion title="Ignore destination members with non-public setters">
+    Mapster maps to non-public setters by default. Use `IgnoreMember` to restrict this:
+
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.Default
+        .IgnoreMember((member, side) =>
+            side == MemberSide.Destination &&
+            member.SetterModifier != AccessModifier.Public);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  Place broadly applicable `IgnoreMember` rules on
+  `TypeAdapterConfig.GlobalSettings.Default` so they apply to every type pair
+  without repetition.
+</Tip>

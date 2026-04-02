@@ -1,0 +1,70 @@
+---
+title: "Configuration inheritance"
+description: "Understand how Mapster inherits mapping configuration across source and destination type hierarchies, and how to control implicit and explicit inheritance."
+---
+
+## Implicit inheritance
+
+By default, Mapster automatically applies a base type's mapping configuration to any derived source type. If you configure a mapping for `SimplePoco → SimpleDto`, a `DerivedPoco` (which extends `SimplePoco`) will use that same configuration when mapped to `SimpleDto`.
+
+```csharp
+TypeAdapterConfig<SimplePoco, SimpleDto>.NewConfig()
+    .Map(dest => dest.Name, src => src.Name + "_Suffix");
+```
+
+```csharp
+var dest = TypeAdapter.Adapt<DerivedPoco, SimpleDto>(src);
+// dest.Name = src.Name + "_Suffix"
+```
+
+### Disabling implicit source inheritance
+
+If you do not want derived source types to pick up the base mapping, turn off implicit source inheritance globally.
+
+```csharp
+TypeAdapterConfig.GlobalSettings.AllowImplicitSourceInheritance = false;
+```
+
+### Enabling implicit destination inheritance
+
+Mapster does **not** inherit destination type mappings by default. To enable it so that a derived destination type inherits the base destination mapping, set the following flag.
+
+```csharp
+TypeAdapterConfig.GlobalSettings.AllowImplicitDestinationInheritance = true;
+```
+
+<Note>
+Enabling `AllowImplicitDestinationInheritance` affects all mappings globally. Enable it only when you want derived destination types to consistently inherit configuration from their base type.
+</Note>
+
+## Explicit inheritance
+
+When you want a specific derived-type mapping to start from a known base mapping, use `Inherits` to copy the settings from the base pair explicitly.
+
+```csharp
+TypeAdapterConfig<DerivedPoco, DerivedDto>.NewConfig()
+        .Inherits<SimplePoco, SimpleDto>();
+```
+
+This gives you full control: you declare exactly which configuration to copy, and you can then add or override individual settings on top of the inherited ones.
+
+## Including derived types
+
+You can register derived-type mappings directly inside a base-type configuration using `Include`. This is useful for polymorphic scenarios where the runtime type of the source object determines which mapping rules apply.
+
+```csharp
+TypeAdapterConfig<Vehicle, VehicleDto>.NewConfig()
+    .Include<Car, CarDto>();
+
+Vehicle vehicle = new Car { Id = 1, Name = "Car", Make = "Toyota" };
+var dto = vehicle.Adapt<Vehicle, VehicleDto>();
+
+dto.ShouldBeOfType<CarDto>();
+((CarDto)dto).Make.ShouldBe("Toyota"); // The 'Make' property doesn't exist in Vehicle
+```
+
+When `Include` is used, Mapster inspects the runtime type of the source object at mapping time and selects the most specific registered type pair. Properties that exist only on the derived type — like `Make` on `Car` — are mapped correctly even though the declared type is `Vehicle`.
+
+<Tip>
+Use `Include` when your code holds a base-type reference but the runtime object may be any of several derived types. This avoids separate `Adapt` calls for each possible concrete type.
+</Tip>

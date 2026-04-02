@@ -1,0 +1,131 @@
+---
+title: Naming conventions
+description: Configure how Mapster matches property names between source and destination using built-in strategies, case-insensitive matching, prefix rules, and attribute-based renaming.
+---
+
+By default, Mapster matches properties using case-sensitive exact name comparison. This page covers every mechanism available to relax or change that behaviour.
+
+---
+
+## Flexible name matching
+
+`NameMatchingStrategy.Flexible` allows Mapster to match across the four common casing styles — `PascalCase`, `camelCase`, `lower_case`, and `UPPER_CASE` — without any manual mapping.
+
+```csharp
+// Global
+TypeAdapterConfig.GlobalSettings.Default
+    .NameMatchingStrategy(NameMatchingStrategy.Flexible);
+
+// Type pair
+TypeAdapterConfig<Foo, Bar>.NewConfig()
+    .NameMatchingStrategy(NameMatchingStrategy.Flexible);
+```
+
+<Note>
+  `Flexible` works by splitting names on case boundaries. It cannot match
+  irregular casing such as `MiXcAsE` against `MixCase`, because `MiXcAsE`
+  splits into `Mi-Xc-As-E` rather than `Mix-Case`. Use `IgnoreCase` for those
+  situations.
+</Note>
+
+---
+
+## Case-insensitive matching
+
+`NameMatchingStrategy.IgnoreCase` performs a case-insensitive comparison without any splitting logic. This handles irregular casing that `Flexible` cannot:
+
+```csharp
+TypeAdapterConfig.GlobalSettings.Default
+    .NameMatchingStrategy(NameMatchingStrategy.IgnoreCase);
+```
+
+---
+
+## Prefix and character replacement
+
+For custom name transformations, use `ConvertSourceMemberName` or `ConvertDestinationMemberName` to provide a function that rewrites member names before matching.
+
+### Add a prefix to source names
+
+```csharp
+TypeAdapterConfig<Poco, Dto>.NewConfig()
+    .NameMatchingStrategy(
+        NameMatchingStrategy.ConvertSourceMemberName(name => "m_" + name));
+```
+
+### Replace characters in source names
+
+```csharp
+TypeAdapterConfig<Poco, Dto>.NewConfig()
+    .NameMatchingStrategy(
+        NameMatchingStrategy.ConvertSourceMemberName(name => name.Replace("Ä", "A")));
+```
+
+Use `ConvertSourceMemberName` when you want to transform names on the source side; use `ConvertDestinationMemberName` when you want to transform the destination side.
+
+---
+
+## Mapping to and from IDictionary
+
+When mapping between a POCO and an `IDictionary<string, T>`, use the dedicated camelCase strategies for reliable and efficient lookup.
+
+```csharp
+// POCO → Dictionary (converts property names to camelCase keys)
+TypeAdapterConfig<Poco, Dictionary<string, object>>.NewConfig()
+    .NameMatchingStrategy(NameMatchingStrategy.ToCamelCase);
+
+// Dictionary → POCO (interprets camelCase keys as POCO property names)
+TypeAdapterConfig<Dictionary<string, object>, Poco>.NewConfig()
+    .NameMatchingStrategy(NameMatchingStrategy.FromCamelCase);
+```
+
+<Tip>
+  When mapping from `IDictionary` to a POCO, prefer `FromCamelCase` over
+  `Flexible` or `IgnoreCase`. The latter two scan through all dictionary entries
+  rather than using direct key lookup, which is slower.
+</Tip>
+
+---
+
+## Rule-based renaming with `GetMemberName`
+
+`GetMemberName` lets you derive a member's effective name from its attributes at configuration time. If the function returns `null`, the member keeps its original name.
+
+```csharp
+TypeAdapterConfig.GlobalSettings.Default
+    .GetMemberName(member => member
+        .GetCustomAttributes(true)
+        .OfType<JsonPropertyAttribute>()
+        .FirstOrDefault()?.PropertyName);
+```
+
+With this configuration in place, a source property annotated with `[JsonProperty("code")]` is matched against the destination member named `code`:
+
+```csharp
+public class Poco
+{
+    [JsonProperty("code")]
+    public string Id { get; set; }
+
+    // ...
+}
+```
+
+`Id` is now mapped as `code`, so it matches a destination property called `Code` (or `code` with `IgnoreCase`).
+
+---
+
+## AdaptMember — rename via attribute
+
+You can also rename an individual member declaratively using the `[AdaptMember]` attribute:
+
+```csharp
+public class Product
+{
+    [AdaptMember("Code")]
+    public string Id { get; set; }
+    public string Name { get; set; }
+}
+```
+
+With this attribute, Mapster maps `Product.Id` as though it were named `Code` on the source side.

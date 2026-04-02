@@ -1,0 +1,116 @@
+---
+title: Setting values
+description: Compute property values at mapping time, apply destination transforms, and pass runtime parameters to your mapping configuration.
+---
+
+## Computed values
+
+Use the `Map` method to specify a lambda that computes a destination property value from the source object. This lets you combine, transform, or derive values rather than relying on a simple property-name match.
+
+```csharp
+TypeAdapterConfig<Poco, Dto>.NewConfig()
+    .Map(dest => dest.FullName, src => src.FirstName + " " + src.LastName);
+```
+
+### Mapping with a condition
+
+`Map` accepts an optional third argument — a predicate evaluated against the source. Mapster evaluates conditions top-to-bottom and uses the first one that matches. Place the unconditional fallback last; if you omit it, Mapster assigns `null` or the default value.
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>
+    .NewConfig()
+    .Map(dest => dest.FullName, src => "Sig. " + src.FullName, srcCond => srcCond.Country == "Italy")
+    .Map(dest => dest.FullName, src => "Sr. " + src.FullName, srcCond => srcCond.Country == "Spain")
+    .Map(dest => dest.FullName, src => "Mr. " + src.FullName);
+```
+
+### Deep destination properties
+
+`Map` can target a nested destination property:
+
+```csharp
+TypeAdapterConfig<Poco, Dto>.NewConfig()
+    .Map(dest => dest.Child.Name, src => src.Name);
+```
+
+### Null propagation
+
+When the source expression contains only a property path, Mapster applies null propagation automatically. If `src.Child` is `null`, the mapping returns `null` instead of throwing a `NullReferenceException`.
+
+```csharp
+TypeAdapterConfig<Poco, Dto>.NewConfig()
+    .Map(dest => dest.Name, src => src.Child.Name);
+```
+
+### Mapping to non-public members
+
+Pass member names as strings to map to or from private members:
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>
+    .NewConfig()
+    .Map("PrivateDestName", "PrivateSrcName");
+```
+
+---
+
+## Transform values
+
+While `Map` targets a single property, `AddDestinationTransform` applies a transform to **all** destination members of a given type. Transforms run after the value is resolved and before it is assigned.
+
+### Trim strings
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>.NewConfig()
+    .AddDestinationTransform((string x) => x.Trim());
+```
+
+### Replace nulls
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>.NewConfig()
+    .AddDestinationTransform((string x) => x ?? "");
+```
+
+### Return empty collections instead of null
+
+Use the built-in `DestinationTransform.EmptyCollectionIfNull` preset to ensure collection properties are never `null` on the destination:
+
+```csharp
+config.Default.AddDestinationTransform(DestinationTransform.EmptyCollectionIfNull);
+```
+
+<Tip>
+  `AddDestinationTransform` is most useful on the global default config so the
+  transform applies across all type pairs in your application.
+</Tip>
+
+---
+
+## Passing runtime parameters
+
+Some mappings need values that are only known at call time, such as the currently authenticated user. You can access these via `MapContext.Current.Parameters` inside your configuration lambda, then supply them when you invoke the mapping.
+
+### Configure the parameter reference
+
+```csharp
+TypeAdapterConfig<Poco, Dto>.NewConfig()
+    .Map(dest => dest.CreatedBy,
+         src => MapContext.Current.Parameters["user"]);
+```
+
+### Supply the parameter at call time
+
+Use `BuildAdapter()` instead of calling `Adapt()` directly, then chain `AddParameters` before `AdaptToType`:
+
+```csharp
+var dto = poco.BuildAdapter()
+              .AddParameters("user", this.User.Identity.Name)
+              .AdaptToType<Dto>();
+```
+
+<Note>
+  You can call `AddParameters` multiple times to supply more than one runtime
+  value. Each key you add is accessible by the same name in
+  `MapContext.Current.Parameters`.
+</Note>

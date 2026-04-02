@@ -1,0 +1,69 @@
+---
+title: 'Queryable projections'
+description: 'Use ProjectToType<T>() to build efficient SELECT expressions directly from IQueryable sources, including EF Core.'
+---
+
+Mapster extends `IQueryable<T>` with a `ProjectToType<T>()` method that builds the SELECT expression at the database level rather than loading full entities into memory first. This is the recommended approach when you work with Entity Framework Core or any other LINQ provider.
+
+## Basic projection
+
+Call `ProjectToType<Destination>()` on any `IQueryable` and chain your normal LINQ materialisation at the end:
+
+```csharp
+using (MyDbContext context = new MyDbContext())
+{
+    var destinations = context.Sources.ProjectToType<Destination>().ToList();
+}
+```
+
+Mapster generates the projection expression automatically, which is equivalent to writing it by hand:
+
+```csharp
+var destinations = context.Sources.Select(c => new Destination {
+    Id = c.Id,
+    Name = c.Name,
+    Surname = c.Surname,
+    // ...
+}).ToList();
+```
+
+Using `ProjectToType` removes the maintenance burden of keeping hand-written SELECT expressions in sync with your model.
+
+<Warning>
+  Do not call `ProjectToType()` before materializing the query with Entity Framework. Doing so is known to cause issues. Always call `ToList()` or `ToListAsync()` **after** `ProjectToType`, not before.
+
+  ```csharp
+  // Correct — project, then materialize
+  var results = context.Sources.ProjectToType<Destination>().ToList();
+
+  // Incorrect — do not materialize before projecting
+  var results = context.Sources.ToList().ProjectToType<Destination>();
+  ```
+</Warning>
+
+## Async projections with EF Core
+
+For async materialisation, install the `Mapster.EFCore` package, which adds a `ProjectToType` overload that works with `ToListAsync()` and other EF Core async methods:
+
+```csharp
+var destinations = await context.Sources
+    .ProjectToType<Destination>()
+    .ToListAsync();
+```
+
+`Mapster.EFCore` is a separate NuGet package. Add it alongside the main `Mapster` package.
+
+## Choosing between ProjectToType and Select
+
+<CardGroup cols={2}>
+  <Card title="ProjectToType" icon="wand-magic-sparkles">
+    Mapster generates the expression for you. Less code to write and maintain, and your projection stays in sync with any mapping configuration you define.
+  </Card>
+  <Card title="Manual Select" icon="pen">
+    You write the expression explicitly. Useful when the projection logic is too complex for Mapster's automatic mapping, or when you need full control over the generated SQL.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Prefer `ProjectToType` for standard column-to-property projections. Fall back to a manual `Select` only when you need custom SQL behaviour that cannot be expressed through Mapster configuration.
+</Tip>

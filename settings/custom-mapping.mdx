@@ -1,0 +1,362 @@
+---
+title: Custom mapping
+description: Control exactly how Mapster maps individual members, handle two-way mappings, map non-public and read-only members, apply attribute-driven configuration, and define rule-based member inclusion.
+---
+
+## Custom member mapping
+
+Use `Map` to override how Mapster resolves a destination member. The source and destination types do not need to match — Mapster will coerce compatible types automatically.
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>
+    .NewConfig()
+    .Map(dest => dest.FullName,
+         src => $"{src.FirstName} {src.LastName}");
+```
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>
+    .NewConfig()
+    .Map(dest => dest.Gender,       // Genders.Male or Genders.Female
+         src => src.GenderString);  // "Male" or "Female"
+```
+
+### Mapping with a condition
+
+Pass a third predicate argument to apply a mapping only when a condition holds. Mapster evaluates conditions in order and falls through to the next entry if the condition is not met. Place the unconditional fallback last; without it, Mapster assigns `null` or the default value.
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>
+    .NewConfig()
+    .Map(dest => dest.FullName, src => "Sig. " + src.FullName, srcCond => srcCond.Country == "Italy")
+    .Map(dest => dest.FullName, src => "Sr. " + src.FullName, srcCond => srcCond.Country == "Spain")
+    .Map(dest => dest.FullName, src => "Mr. " + src.FullName);
+```
+
+### Deep destination properties
+
+`Map` can target a nested property on the destination:
+
+```csharp
+TypeAdapterConfig<Poco, Dto>.NewConfig()
+    .Map(dest => dest.Child.Name, src => src.Name);
+```
+
+### Null propagation
+
+When the source expression is a pure property path, Mapster applies null propagation automatically. If `src.Child` is `null`, the result is `null` rather than a `NullReferenceException`.
+
+```csharp
+TypeAdapterConfig<Poco, Dto>.NewConfig()
+    .Map(dest => dest.Name, src => src.Child.Name);
+```
+
+### Multiple sources
+
+You can flatten a nested object into the destination, or combine two objects using a tuple.
+
+<Tabs>
+  <Tab title="Flatten nested object">
+    ```csharp
+    // Map all properties from Dto.SubDto into Poco
+    TypeAdapterConfig<Dto, Poco>.NewConfig()
+        .Map(poco => poco, dto => dto.SubDto);
+    ```
+  </Tab>
+  <Tab title="Combine two objects">
+    ```csharp
+    TypeAdapterConfig<(Dto1, Dto2), Poco>.NewConfig()
+        .Map(dest => dest, src => src.Item1)
+        .Map(dest => dest, src => src.Item2);
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Two-way mapping
+
+When you need to map `Poco → Dto` and `Dto → Poco`, define the configuration once using `TwoWays`. Any `Map` calls placed **after** `TwoWays()` apply to both directions; calls placed before it apply only to the declared direction.
+
+```csharp
+TypeAdapterConfig<Poco, Dto>
+    .NewConfig()
+    .Map(dto => dto.Foo, poco => poco.Bar)   // Poco→Dto only
+    .TwoWays()
+    .Map(dto => dto.Code, poco => poco.Id);  // both directions
+```
+
+<Warning>
+  `TwoWays()` must be called before any `Map` that you want to apply bidirectionally.
+</Warning>
+
+### Flattening and unflattening
+
+Mapster flattens nested properties automatically (e.g., `Supervisor.Name → SupervisorName`). The reverse — unflattening — requires an explicit setting:
+
+```csharp
+TypeAdapterConfig<StaffDto, Staff>.NewConfig()
+    .Unflattening(true);
+```
+
+Using `TwoWays` on the forward mapping handles both directions at once:
+
+```csharp
+TypeAdapterConfig<Staff, StaffDto>
+    .NewConfig()
+    .TwoWays(); // also maps poco.Supervisor.Name = dto.SupervisorName for reverse
+```
+
+---
+
+## Mapping non-public members
+
+By default, Mapster maps only public properties and fields. You have several options for reaching non-public members.
+
+<AccordionGroup>
+  <Accordion title="EnableNonPublicMembers">
+    Enable globally or for a specific type pair:
+
+    ```csharp
+    // Type pair
+    TypeAdapterConfig<Poco, Dto>.NewConfig().EnableNonPublicMembers(true);
+
+    // Global
+    TypeAdapterConfig.GlobalSettings.Default.EnableNonPublicMembers(true);
+    ```
+
+    <Note>
+      If a type has no public properties, Mapster treats it as a primitive. When enabling non-public member mapping globally, also declare an explicit type pair so Mapster applies the setting:
+
+      ```csharp
+      TypeAdapterConfig.GlobalSettings.Default.EnableNonPublicMembers(true);
+      TypeAdapterConfig<PrivatePoco, PrivateDto>.NewConfig();
+      ```
+    </Note>
+  </Accordion>
+
+  <Accordion title="AdaptMember attribute">
+    Decorate an individual non-public member to include it in mapping without changing global settings:
+
+    ```csharp
+    public class Product
+    {
+        [AdaptMember]
+        private string HiddenId { get; set; }
+        public string Name { get; set; }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Map with string names">
+    Pass member names as strings to reach private members directly:
+
+    ```csharp
+    TypeAdapterConfig<TSource, TDestination>
+        .NewConfig()
+        .Map("PrivateDestName", "PrivateSrcName");
+    ```
+  </Accordion>
+
+  <Accordion title="IncludeMember by access modifier">
+    Use `IncludeMember` to select members by their access modifier:
+
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.Default
+        .IncludeMember((member, side) =>
+            member.AccessModifier == AccessModifier.Internal ||
+            member.AccessModifier == AccessModifier.ProtectedInternal);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Mapping read-only properties
+
+Mapster can map to properties with non-public setters automatically. For fully read-only properties (no setter at all), you need to tell Mapster to use the existing destination value instead of trying to assign a new one.
+
+### Non-public setter
+
+No configuration is required — Mapster handles this automatically:
+
+```csharp
+public class Order
+{
+    public string Id { get; set; }
+    public ICollection<OrderItem> Items { get; private set; }
+}
+```
+
+### UseDestinationValue attribute
+
+Annotate a truly read-only property so Mapster maps into the existing instance rather than replacing it:
+
+```csharp
+public class Order
+{
+    public string Id { get; set; }
+
+    [UseDestinationValue]
+    public ICollection<OrderItem> Items { get; } = new List<OrderItem>();
+}
+```
+
+### Convention-based UseDestinationValue
+
+Apply the rule broadly without annotating every class individually. For example, treat all read-only `ICollection<>` properties as destination values:
+
+```csharp
+TypeAdapterConfig.GlobalSettings.Default
+    .UseDestinationValue(member =>
+        member.SetterModifier == AccessModifier.None &&
+        member.Type.IsGenericType &&
+        member.Type.GetGenericTypeDefinition() == typeof(ICollection<>));
+```
+
+---
+
+## Attribute-driven configuration
+
+### AdaptIgnore
+
+Exclude a property from mapping entirely. By default, the property is ignored on both source and destination sides:
+
+```csharp
+public class Product
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+
+    [AdaptIgnore]
+    public decimal Price { get; set; }
+}
+```
+
+Restrict the ignore to one side by passing `MemberSide`:
+
+```csharp
+public class Product
+{
+    [AdaptIgnore(MemberSide.Source)]
+    public decimal Price { get; set; }
+}
+```
+
+### AdaptMember — rename a member
+
+Map a property to a differently-named destination member:
+
+```csharp
+public class Product
+{
+    [AdaptMember("Code")]
+    public string Id { get; set; }
+    public string Name { get; set; }
+}
+```
+
+### IgnoreAttribute — ignore by third-party attribute
+
+Tell Mapster to respect any attribute as an ignore marker:
+
+```csharp
+TypeAdapterConfig.GlobalSettings.Default
+    .IgnoreAttribute(typeof(JsonIgnoreAttribute));
+```
+
+To restrict this to one side only, use `IgnoreMember`:
+
+```csharp
+config.IgnoreMember((member, side) =>
+    member.HasCustomAttribute(typeof(NotMapAttribute)) && side == MemberSide.Source);
+```
+
+### IncludeAttribute
+
+Include non-public members that carry a specific attribute:
+
+```csharp
+TypeAdapterConfig.GlobalSettings.Default
+    .IncludeAttribute(typeof(JsonPropertyAttribute));
+```
+
+### GetMemberName — rename from custom attributes
+
+Rename members by reading an attribute value at config time:
+
+```csharp
+TypeAdapterConfig.GlobalSettings.Default
+    .GetMemberName(member => member
+        .GetCustomAttributes(true)
+        .OfType<JsonPropertyAttribute>()
+        .FirstOrDefault()?.PropertyName); // returning null leaves the name unchanged
+```
+
+With this configuration, a property annotated `[JsonProperty("code")]` is matched as `code` in the destination.
+
+---
+
+## Rule-based member inclusion
+
+`IncludeMember` and `IgnoreMember` let you define broad rules about which members Mapster processes, based on the `IMemberModel` information available for each member.
+
+```csharp
+public interface IMemberModel
+{
+    Type Type { get; }
+    string Name { get; }
+    object Info { get; }                          // PropertyInfo, FieldInfo, or ParameterInfo
+    AccessModifier SetterModifier { get; }
+    AccessModifier AccessModifier { get; }
+    IEnumerable<object> GetCustomAttributes(bool inherit);
+}
+```
+
+<AccordionGroup>
+  <Accordion title="Exclude fields, keep only properties">
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.Default
+        .IgnoreMember((member, side) => member.Info is FieldInfo);
+    ```
+  </Accordion>
+
+  <Accordion title="Allow only a specific list of types">
+    Useful when working with Entity Framework to skip navigation properties:
+
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.Default
+        .IgnoreMember((member, side) => !validTypes.Contains(member.Type));
+    ```
+  </Accordion>
+
+  <Accordion title="Allow only members in System namespaces">
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.Default
+        .IgnoreMember((member, side) => !member.Type.Namespace.StartsWith("System"));
+    ```
+  </Accordion>
+
+  <Accordion title="Include only DataMember-decorated members">
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.Default
+        .IncludeMember((member, side) =>
+            member.GetCustomAttributes(true).OfType<DataMemberAttribute>().Any());
+
+    TypeAdapterConfig.GlobalSettings.Default
+        .IgnoreMember((member, side) =>
+            !member.GetCustomAttributes(true).OfType<DataMemberAttribute>().Any());
+    ```
+  </Accordion>
+
+  <Accordion title="Require public setters on the destination">
+    Mapster maps to non-public setters by default. Restrict this to public setters only:
+
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.Default
+        .IgnoreMember((member, side) =>
+            side == MemberSide.Destination &&
+            member.SetterModifier != AccessModifier.Public);
+    ```
+  </Accordion>
+</AccordionGroup>

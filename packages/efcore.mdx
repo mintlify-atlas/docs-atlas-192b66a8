@@ -1,0 +1,75 @@
+---
+title: Entity Framework Core and EF6
+description: Use Mapster with Entity Framework Core or EF6 to map tracked entities, project IQueryable results, and resolve navigation properties automatically.
+---
+
+Mapster provides dedicated packages for both Entity Framework Core and Entity Framework 6. When you copy data from a DTO back to a tracked entity that has navigation properties, these packages help Mapster find existing entity objects in the context automatically — rather than creating new, untracked instances.
+
+## Installation
+
+<CodeGroup>
+
+```bash EF Core
+PM> Install-Package Mapster.EFCore
+```
+
+```bash EF6
+PM> Install-Package Mapster.EF6
+```
+
+</CodeGroup>
+
+## EF Core version compatibility
+
+| Mapster.EFCore version | EF Core version |
+|------------------------|-----------------|
+| 5.x                    | EF Core 5.x     |
+| 3.x                    | EF Core 3.x     |
+| 1.x                    | EF Core 2.x     |
+
+## Usage
+
+### Mapping a DTO onto a tracked entity
+
+Use `EntityFromContext` to tell Mapster which `DbContext` to use when resolving navigation properties.
+
+```csharp
+var poco = db.DomainPoco.Include("Children")
+    .Where(item => item.Id == dto.Id).FirstOrDefault();
+
+dto.BuildAdapter()
+    .EntityFromContext(db)
+    .AdaptTo(poco);
+```
+
+If you are using an injected `IMapper` instance:
+
+```csharp
+_mapper.From(dto)
+    .EntityFromContext(db)
+    .AdaptTo(poco);
+```
+
+### Projecting an IQueryable with ProjectToType (EF Core)
+
+`Mapster.EFCore` adds a `ProjectToType` extension that translates your mapping configuration into a SQL-level projection, avoiding loading full entity graphs into memory.
+
+```csharp
+var query = db.Customers.Where(...);
+_mapper.From(query)
+    .ProjectToType<Dto>();
+```
+
+<Note>
+`ProjectToType` is only available when using `Mapster.EFCore` with an `IMapper` instance registered via `Mapster.DependencyInjection`. It translates the mapping to an `IQueryable` expression that EF Core can send to the database.
+</Note>
+
+<Tip>
+Use `ProjectToType` instead of loading full entities and then calling `.Adapt<Dto>()` when you only need a subset of columns. This can significantly reduce the data transferred from the database.
+</Tip>
+
+## EF6 differences
+
+The `Mapster.EF6` package provides the same `EntityFromContext` API as `Mapster.EFCore`. The core usage pattern is identical — pass your `DbContext` to `EntityFromContext` and call `AdaptTo` on your entity.
+
+`ProjectToType` via `IMapper` is an EF Core-only feature and is not available in the EF6 package.

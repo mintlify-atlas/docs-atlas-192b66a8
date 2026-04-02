@@ -1,0 +1,234 @@
+---
+title: "Attribute-based code generation"
+description: "Use [AdaptTo], [AdaptFrom], [AdaptTwoWays], and [GenerateMapper] to generate DTOs and extension methods directly from annotated domain classes."
+---
+
+The attribute-based approach lets you declare mapping intent on your domain classes themselves. Mapster.Tool reads those annotations at generation time and emits matching DTO classes and, optionally, static mapper extension methods.
+
+<Tip>
+  This strategy is a good fit when you own the domain classes and want mapping configuration to live alongside the types it describes.
+</Tip>
+
+## Core attributes
+
+| Attribute | What it generates |
+|-----------|-------------------|
+| `[AdaptTo("[name]Dto")]` | A DTO class that the domain class maps **to** |
+| `[AdaptFrom("[name]Merge")]` | A DTO class that maps **into** the domain class |
+| `[AdaptTwoWays]` | Both directions in a single declaration |
+| `[GenerateMapper]` | Static extension methods on the generated mapper class |
+| `[AdaptIgnore]` | Excludes a property from the generated DTO |
+| `[AdaptMember]` | Customises how an individual member is mapped |
+
+The `[name]` token in the pattern string is replaced by the class name at generation time.
+
+## Basic DTO generation
+
+Annotate your domain class with `[AdaptTo]`:
+
+```csharp
+[AdaptTo("[name]Dto")]
+public class Student {
+    public string Name { get; set; }
+    public int Age { get; set; }
+}
+```
+
+Run the tool:
+
+```bash
+dotnet mapster model -a "bin/Debug/net8.0/MyProject.dll"
+```
+
+Mapster.Tool generates:
+
+```csharp
+public class StudentDto {
+    public string Name { get; set; }
+    public int Age { get; set; }
+}
+```
+
+## Generating extension methods
+
+Add `[GenerateMapper]` alongside any adapt attribute to produce a static mapper class:
+
+```csharp
+[AdaptTo("[name]Dto"), GenerateMapper]
+public class Student {
+    public string Name { get; set; }
+}
+```
+
+Run the extension command:
+
+```bash
+dotnet mapster extension -a "bin/Debug/net8.0/MyProject.dll"
+```
+
+Mapster.Tool generates both the DTO and the mapper:
+
+```csharp
+public class StudentDto {
+    // ...
+}
+
+public static class StudentMapper {
+    public static StudentDto AdaptToDto(this Student poco) { ... }
+    public static StudentDto AdaptTo(this Student poco, StudentDto dto) { ... }
+    public static Expression<Func<Student, StudentDto>> ProjectToDto => ...
+}
+```
+
+## Ignoring properties
+
+### Exclude with `[AdaptIgnore]`
+
+Properties annotated with `[AdaptIgnore]` are excluded from every generated DTO for that class.
+
+### Require specific attributes
+
+Use `IgnoreNoAttributes` to only generate properties that carry a particular attribute:
+
+```csharp
+[AdaptTo("[name]Dto", IgnoreNoAttributes = new[] { typeof(DataMemberAttribute) })]
+public class Student {
+    [DataMember]
+    public string Name { get; set; }     // included in generated DTO
+
+    public string LastName { get; set; } // excluded — no [DataMember]
+}
+```
+
+You can also use `IgnoreAttributes` (exclude properties that have a given attribute) and `IgnoreNamespaces` (exclude properties whose type lives in a given namespace).
+
+## Changing property types
+
+By default, if a property's type is itself annotated with an adapt attribute, code generation forwards it to the corresponding DTO type. For example, `ICollection<Enrollment>` becomes `ICollection<EnrollmentDto>` when `Enrollment` carries `[AdaptTo("[name]Dto")]`.
+
+Override this with `[PropertyType]`, which you can place on the class or on individual properties:
+
+```csharp
+[AdaptTo("[name]Dto")]
+public class Student {
+    public ICollection<Enrollment> Enrollments { get; set; }
+}
+
+[AdaptTo("[name]Dto"), PropertyType(typeof(DataItem))]
+public class Enrollment {
+    [PropertyType(typeof(string))]
+    public Grade? Grade { get; set; }
+}
+```
+
+Generated output:
+
+```csharp
+public class StudentDto {
+    public ICollection<DataItem> Enrollments { get; set; }
+}
+
+public class EnrollmentDto {
+    public string Grade { get; set; }
+}
+```
+
+## Readonly properties and constructors
+
+For `[AdaptTo]` and `[AdaptTwoWays]`, set `MapToConstructor = true` to generate readonly properties backed by a constructor:
+
+```csharp
+[AdaptTo("[name]Dto", MapToConstructor = true)]
+public class Student {
+    public string Name { get; set; }
+}
+```
+
+Generated output:
+
+```csharp
+public class StudentDto {
+    public string Name { get; }
+
+    public StudentDto(string name) {
+        this.Name = name;
+    }
+}
+```
+
+## Nullable properties for merge DTOs
+
+For `[AdaptFrom]`, set `IgnoreNullValues = true` to make all value-type properties nullable in the generated class. This is useful for PATCH-style merge objects where you want to distinguish "not provided" from a real zero or false.
+
+```csharp
+[AdaptFrom("[name]Merge", IgnoreNullValues = true)]
+public class Student {
+    public int Age { get; set; }
+}
+```
+
+Generated output:
+
+```csharp
+public class StudentMerge {
+    public int? Age { get; set; }
+}
+```
+
+## Full workflow example
+
+<Steps>
+  <Step title="Annotate your domain class">
+    ```csharp
+    [AdaptTo("[name]Dto"), GenerateMapper]
+    public class Student {
+        public string Name { get; set; }
+        public int Age { get; set; }
+
+        [AdaptIgnore]
+        public string PasswordHash { get; set; }
+    }
+    ```
+  </Step>
+  <Step title="Build the project">
+    ```bash
+    dotnet build
+    ```
+  </Step>
+  <Step title="Run Mapster.Tool">
+    ```bash
+    dotnet mapster model     -a "bin/Debug/net8.0/MyProject.dll" -o Generated
+    dotnet mapster extension -a "bin/Debug/net8.0/MyProject.dll" -o Generated
+    ```
+  </Step>
+  <Step title="Review the generated files">
+    `Generated/StudentDto.g.cs`:
+
+    ```csharp
+    public class StudentDto {
+        public string Name { get; set; }
+        public int Age { get; set; }
+    }
+    ```
+
+    `Generated/StudentMapper.g.cs`:
+
+    ```csharp
+    public static class StudentMapper {
+        public static StudentDto AdaptToDto(this Student poco) { ... }
+        public static StudentDto AdaptTo(this Student poco, StudentDto dto) { ... }
+        public static Expression<Func<Student, StudentDto>> ProjectToDto => ...
+    }
+    ```
+  </Step>
+  <Step title="Use the generated mapper in your code">
+    ```csharp
+    Student student = GetStudent();
+    StudentDto dto = student.AdaptToDto();
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Generated files use the `.g.cs` extension by convention. Add `**/*.g.cs` to your `.gitignore` if you prefer not to commit them, or check them in to make diffs visible in code review.
+</Note>

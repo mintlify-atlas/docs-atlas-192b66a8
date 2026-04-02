@@ -1,0 +1,262 @@
+---
+title: "Fluent API code generation"
+description: "Use ICodeGenerationRegister and TypeAdapterConfig to generate DTOs and mappers from a separate assembly without annotating your domain classes."
+---
+
+The fluent API approach lets you configure code generation entirely in a dedicated class — no attributes on your domain models required. This is the right choice when you cannot or do not want to modify the domain assembly, or when you want to generate DTOs from types defined in a third-party library.
+
+<Tip>
+  Put your `ICodeGenerationRegister` implementation in a separate project (e.g. `MyApp.CodeGen`) that references the domain assembly. This keeps generation logic isolated from both the domain and the application.
+</Tip>
+
+## Setting up a register class
+
+Implement `ICodeGenerationRegister` and configure generation inside the `Register` method:
+
+```csharp
+public class MyRegister : ICodeGenerationRegister
+{
+    public void Register(CodeGenerationConfig config)
+    {
+        config.AdaptTo("[name]Dto")
+            .ForAllTypesInNamespace(Assembly.GetExecutingAssembly(), "Sample.CodeGen.Domains");
+
+        config.GenerateMapper("[name]Mapper")
+            .ForType<Course>()
+            .ForType<Student>();
+    }
+}
+```
+
+Pass the assembly that contains your register class to the tool:
+
+```bash
+dotnet mapster model     -a "bin/Debug/net8.0/MyApp.CodeGen.dll"
+dotnet mapster extension -a "bin/Debug/net8.0/MyApp.CodeGen.dll"
+```
+
+## Declaring DTO models
+
+Use `AdaptTo`, `AdaptFrom`, or `AdaptTwoWays` on the config object, then chain `ForType<T>` or `ForAllTypesInNamespace`:
+
+```csharp
+config.AdaptTo("[name]Dto")
+    .ForType<Student>();
+```
+
+Mapster.Tool generates:
+
+```csharp
+public class StudentDto {
+    // all public properties from Student
+}
+```
+
+### Selecting types
+
+You can combine multiple selection methods and remove unwanted types using `ExcludeTypes`:
+
+```csharp
+config.AdaptTo("[name]Dto")
+    .ForAllTypesInNamespace(Assembly.GetExecutingAssembly(), "Sample.CodeGen.Domains")
+    .ExcludeTypes(typeof(SchoolContext))
+    .ExcludeTypes(type => type.IsEnum);
+```
+
+## Ignoring properties
+
+### Require a specific attribute
+
+Use `IgnoreNoAttributes` to only include properties that carry a given attribute:
+
+```csharp
+config.AdaptTo("[name]Dto")
+    .ForType<Student>()
+    .IgnoreNoAttributes(typeof(DataMemberAttribute));
+
+public class Student {
+    [DataMember]
+    public string Name { get; set; }     // included in generated DTO
+    public string LastName { get; set; } // excluded — no [DataMember]
+}
+```
+
+### Ignore a specific property
+
+Use a lambda to exclude individual properties by name:
+
+```csharp
+config.AdaptTo("[name]Dto")
+    .ForType<Student>(cfg => {
+        cfg.Ignore(poco => poco.LastName);
+    });
+```
+
+## Renaming and retyping properties
+
+Use `cfg.Map` inside a `ForType` callback to rename a property or change its type in the generated DTO:
+
+```csharp
+config.AdaptTo("[name]Dto")
+    .ForType<Student>(cfg => {
+        cfg.Map(poco => poco.LastName, "Surname");    // rename
+        cfg.Map(poco => poco.Grade, typeof(string));  // change type
+    });
+```
+
+## Forwarding property types
+
+By default, if a property's type is also being generated, code generation forwards it automatically (`ICollection<Enrollment>` → `ICollection<EnrollmentDto>`). Override this globally with `AlterType`:
+
+```csharp
+config.AdaptTo("[name]Dto")
+    .ForAllTypesInNamespace(Assembly.GetExecutingAssembly(), "Sample.CodeGen.Domains")
+    .AlterType<Student, Person>();  // every Student property becomes Person in the generated DTO
+```
+
+## Readonly properties and constructors
+
+For `AdaptTo` and `AdaptTwoWays`, call `MapToConstructor(true)` to generate immutable DTOs:
+
+```csharp
+config.AdaptTo("[name]Dto")
+    .ForType<Student>()
+    .MapToConstructor(true);
+```
+
+Generated output:
+
+```csharp
+public class StudentDto {
+    public string Name { get; }
+
+    public StudentDto(string name) {
+        this.Name = name;
+    }
+}
+```
+
+## Nullable properties for merge DTOs
+
+For `AdaptFrom`, call `IgnoreNullValues(true)` to make every value-type property nullable — useful for PATCH-style merge objects:
+
+```csharp
+config.AdaptFrom("[name]Merge")
+    .ForType<Student>()
+    .IgnoreNullValues(true);
+```
+
+Generated output:
+
+```csharp
+public class StudentMerge {
+    public int? Age { get; set; }
+}
+```
+
+## Generating extension methods
+
+Declare `GenerateMapper` separately and list the types you want mappers for:
+
+```csharp
+config.AdaptTo("[name]Dto")
+    .ForType<Student>();
+
+config.GenerateMapper("[name]Mapper")
+    .ForType<Student>();
+```
+
+Run the extension command:
+
+```bash
+dotnet mapster extension -a "bin/Debug/net8.0/MyApp.CodeGen.dll"
+```
+
+Generated output:
+
+```csharp
+public class StudentDto {
+    // ...
+}
+
+public static class StudentMapper {
+    public static StudentDto AdaptToDto(this Student poco) { ... }
+    public static StudentDto AdaptTo(this Student poco, StudentDto dto) { ... }
+    public static Expression<Func<Student, StudentDto>> ProjectToDto => ...
+}
+```
+
+## Adding runtime mapping configuration
+
+If you also need runtime `TypeAdapterConfig` behaviour (custom value resolvers, `BeforeMapping`, `AfterMapping`, etc.), implement `IRegister` alongside your `ICodeGenerationRegister`:
+
+```csharp
+public class MyRegister : IRegister
+{
+    public void Register(TypeAdapterConfig config)
+    {
+        config.NewConfig<TSource, TDestination>();
+    }
+}
+```
+
+For advanced cases you can attach `GenerateMapper` directly to a `NewConfig` call to control which map types are emitted:
+
+```csharp
+public class MyRegister : IRegister
+{
+    public void Register(TypeAdapterConfig config)
+    {
+        config.NewConfig<TSource, TDestination>()
+            .GenerateMapper(MapType.Map | MapType.MapToTarget);
+    }
+}
+```
+
+<Note>
+  `ICodeGenerationRegister` controls what Mapster.Tool generates at build time. `IRegister` controls the runtime `TypeAdapterConfig` used by `TypeAdapter.Adapt`. You can implement both on the same class.
+</Note>
+
+## Full workflow example
+
+<Steps>
+  <Step title="Create a codegen project">
+    ```bash
+    dotnet new classlib -n MyApp.CodeGen
+    dotnet add MyApp.CodeGen/MyApp.CodeGen.csproj package Mapster
+    dotnet add MyApp.CodeGen/MyApp.CodeGen.csproj reference ../MyApp.Domain/MyApp.Domain.csproj
+    ```
+  </Step>
+  <Step title="Implement ICodeGenerationRegister">
+    ```csharp
+    using Mapster;
+
+    public class MyRegister : ICodeGenerationRegister
+    {
+        public void Register(CodeGenerationConfig config)
+        {
+            config.AdaptTo("[name]Dto")
+                .ForAllTypesInNamespace(Assembly.GetExecutingAssembly(), "MyApp.Domain")
+                .ExcludeTypes(type => type.IsEnum);
+
+            config.GenerateMapper("[name]Mapper")
+                .ForType<Student>()
+                .ForType<Course>();
+        }
+    }
+    ```
+  </Step>
+  <Step title="Build and run the tool">
+    ```bash
+    dotnet build MyApp.CodeGen
+    dotnet mapster model     -a "MyApp.CodeGen/bin/Debug/net8.0/MyApp.CodeGen.dll" -o Generated
+    dotnet mapster extension -a "MyApp.CodeGen/bin/Debug/net8.0/MyApp.CodeGen.dll" -o Generated
+    ```
+  </Step>
+  <Step title="Use the generated code">
+    ```csharp
+    Student student = GetStudent();
+    StudentDto dto = student.AdaptToDto();
+    ```
+  </Step>
+</Steps>

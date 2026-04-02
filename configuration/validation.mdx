@@ -1,0 +1,106 @@
+---
+title: "Validation and compilation"
+description: "Validate mappings with Compile(), enforce strict mapping modes, and surface configuration errors at startup rather than at runtime."
+---
+
+## Why validate mappings
+
+By default, Mapster compiles a mapping the first time it is used. Any misconfiguration — a missing member, a wrong type — surfaces as a runtime error in production. Calling `Compile()` explicitly at startup converts those runtime surprises into startup failures, making problems visible immediately.
+
+## Enforcing explicit mapping
+
+Set `RequireExplicitMapping` to `true` to force every mapped type pair to have a configuration entry. Without this flag, Mapster will silently map any two types by convention.
+
+```csharp
+// Default is false
+TypeAdapterConfig.GlobalSettings.RequireExplicitMapping = true;
+
+// Every pair now needs at least an empty config entry
+TypeAdapterConfig<Source, Destination>.NewConfig();
+```
+
+## Requiring destination member sources
+
+Set `RequireDestinationMemberSource` to `true` to ensure that every property on the destination type has either a corresponding source member, an explicit mapping, or is explicitly ignored. This prevents silently unmapped destination properties.
+
+```csharp
+// Default is false
+TypeAdapterConfig.GlobalSettings.RequireDestinationMemberSource = true;
+```
+
+<Warning>
+Enabling `RequireDestinationMemberSource` without also configuring or ignoring every destination property will cause validation to fail. Audit your type pairs before enabling this setting in an existing codebase.
+</Warning>
+
+## Validating mappings with Compile()
+
+Call `Compile()` after you finish defining all configuration. Mapster will attempt to build the mapping expression for each registered pair and throw a descriptive exception for any that are invalid.
+
+<Tabs>
+  <Tab title="Validate a specific pair">
+    ```csharp
+    var config = TypeAdapterConfig<Source, Destination>.NewConfig();
+    config.Compile();
+    ```
+  </Tab>
+  <Tab title="Validate all registered pairs">
+    ```csharp
+    TypeAdapterConfig<Source, Destination>.NewConfig();
+    TypeAdapterConfig<Source2, Destination2>.NewConfig();
+    TypeAdapterConfig.GlobalSettings.Compile();
+    ```
+  </Tab>
+  <Tab title="Validate a config instance">
+    ```csharp
+    var config = new TypeAdapterConfig();
+    config.Compile();
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+After `Compile()` is called, any further changes to that config will throw an exception. Always finish all configuration before calling `Compile()`.
+</Note>
+
+## Recommended startup pattern
+
+<Steps>
+  <Step title="Define all configuration">
+    Register every type pair you need — using `NewConfig`, `ForType`, `IRegister` + `Scan`, or attributes — before calling `Compile`.
+  </Step>
+  <Step title="Enable strict modes (optional)">
+    Set `RequireExplicitMapping` and/or `RequireDestinationMemberSource` if you want Mapster to enforce completeness.
+
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.RequireExplicitMapping = true;
+    TypeAdapterConfig.GlobalSettings.RequireDestinationMemberSource = true;
+    ```
+  </Step>
+  <Step title="Call Compile()">
+    Compile globally at the end of your startup configuration block. Any errors surface immediately rather than during a user request.
+
+    ```csharp
+    TypeAdapterConfig.GlobalSettings.Compile();
+    ```
+  </Step>
+</Steps>
+
+## Using Compile() in unit tests
+
+`Compile()` is particularly useful in a dedicated mapping validation test. Run it in your test suite to catch configuration errors in CI before they reach production.
+
+```csharp
+[Fact]
+public void MapsterConfig_ShouldCompileWithoutErrors()
+{
+    TypeAdapterConfig<Source, Destination>.NewConfig();
+    TypeAdapterConfig<Source2, Destination2>.NewConfig();
+
+    // Throws if any mapping is invalid
+    TypeAdapterConfig.GlobalSettings.Compile();
+}
+```
+
+<Tip>
+Pair `Compile()` with `RequireExplicitMapping` and `RequireDestinationMemberSource` in your test to get the strictest possible validation pass, without enabling those modes in production configuration.
+</Tip>

@@ -1,97 +1,85 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Mapster — The Mapper of Your Domain"
+description: "A fast, lightweight object-to-object mapper for .NET. Map between types with zero configuration, generate DTOs at compile time, and project queryables — all with 4x better performance than AutoMapper."
 ---
 
-## Setting up
+Mapster is a high-performance object mapper for .NET. It maps between C# types by convention — no boilerplate required. When you need more control, it provides a rich fluent API for custom mappings, constructor mapping, value transforms, and more. For maximum performance, use code generation to produce static mapper classes at build time.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Add Mapster to your .NET project via NuGet in seconds.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Map your first objects and understand the core concepts.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Configuration" icon="sliders" href="/configuration/overview">
+    Set per-type rules, global defaults, and rule-based overrides.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Code Generation" icon="code" href="/codegen/overview">
+    Generate DTO classes and mapper methods at build time with Mapster.Tool.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Why Mapster?
 
-Everything you need to create world-class documentation.
+Mapster is designed to be fast, memory-efficient, and easy to use. Benchmark results comparing 10,000 object mappings:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+| Library | Mean | Allocated |
+|---|---|---|
+| Mapster 6 (codegen) | 34 ms | 124 MB |
+| Mapster 6 (FEC) | 37 ms | 118 MB |
+| Mapster 6 | 109 ms | 124 MB |
+| ExpressMapper 1.9.1 | 206 ms | 237 MB |
+| AutoMapper 10.0.0 | 421 ms | 351 MB |
 
-## Need inspiration?
+<CardGroup cols={2}>
+  <Card title="Mapping" icon="arrow-right-arrow-left" href="/mapping/basic-usage">
+    Adapt objects, map to existing instances, and work with collections.
+  </Card>
+  <Card title="Data types" icon="layer-group" href="/mapping/data-types">
+    Primitives, enums, strings, collections, records, and dictionaries.
+  </Card>
+  <Card title="Settings" icon="gear" href="/settings/setting-values">
+    Computed values, transforms, constructor mapping, and more.
+  </Card>
+  <Card title="Packages" icon="box" href="/packages/dependency-injection">
+    DI, EF Core, async, JSON.NET, immutable collections, and diagnostics.
+  </Card>
+</CardGroup>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+## Basic usage
+
+Map an object to a new instance with a single method call:
+
+```csharp
+var destObject = sourceObject.Adapt<Destination>();
+```
+
+Map into an existing object:
+
+```csharp
+sourceObject.Adapt(destObject);
+```
+
+Project a queryable to a DTO type without materializing the full entity:
+
+```csharp
+var dtos = dbContext.Users.ProjectToType<UserDto>().ToList();
+```
+
+<Steps>
+  <Step title="Install Mapster">
+    ```bash
+    dotnet add package Mapster
+    ```
+  </Step>
+  <Step title="Map your first object">
+    Call `.Adapt<TDestination>()` on any source object. Mapster maps matching property names by convention — no configuration needed.
+  </Step>
+  <Step title="Add custom configuration (optional)">
+    Use `TypeAdapterConfig<TSource, TDestination>.NewConfig()` to define per-type rules like ignored fields, computed values, or custom resolvers.
+  </Step>
+  <Step title="Generate code for production (optional)">
+    Install `Mapster.Tool` and add a build target to generate static mapper classes for compile-time safety and maximum performance.
+  </Step>
+</Steps>

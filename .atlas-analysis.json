@@ -1,23 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Mapster",
+  "projectType": "sdk-library",
+  "projectName": "Mapster",
+  "projectDescription": "A fast, lightweight object-to-object mapper for .NET that supports code generation, dependency injection, and queryable projections.",
   "theme": "palm",
-  "colors": {
-    "primary": "#4B6EFB",
-    "light": "#EEF1FF",
-    "dark": "#1E2A6E"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/MapsterMapper/Mapster"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/MapsterMapper/Mapster"
-    }
-  },
+  "primaryColor": "#4B6EFB",
+  "lightColor": "#EEF1FF",
+  "darkColor": "#1E2A6E",
   "navigation": {
     "tabs": [
       {
@@ -89,5 +77,33 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Convention-based object-to-object mapping with zero configuration",
+    "4x faster than AutoMapper with 1/3 the memory usage",
+    "Queryable projections via ProjectToType<T>()",
+    "Code generation for DTOs, extension methods, and mapper classes",
+    "Dependency injection support with IMapper interface",
+    "Configurable settings: custom mapping, ignoring members, constructor mapping, naming conventions",
+    "Support for records, collections, dictionaries, enums, and primitives",
+    "Before/after mapping hooks and runtime parameter passing",
+    "Step-into debugging with ExpressionDebugger",
+    "Assembly scanning via IRegister for organized configuration"
+  ],
+  "publicApiSurface": [
+    "T Adapt<T>(this object source)",
+    "void Adapt<TSource, TDestination>(this TSource source, TDestination destination)",
+    "IQueryable<TDestination> ProjectToType<TDestination>(this IQueryable source)",
+    "TypeAdapterConfig.GlobalSettings",
+    "TypeAdapterConfig<TSource, TDestination>.NewConfig()",
+    "TypeAdapterConfig<TSource, TDestination>.ForType()",
+    "TypeAdapterConfig.GlobalSettings.Scan(params Assembly[] assemblies)",
+    "IMapper (Mapster.DependencyInjection)",
+    "services.AddMapster()",
+    "BuildAdapter().AddParameters().AdaptToType<T>()",
+    "[AdaptTo], [AdaptFrom], [AdaptTwoWays] attributes",
+    "[AdaptIgnore], [AdaptMember] attributes",
+    "[GenerateMapper] attribute",
+    "dotnet mapster model | extension | mapper (Mapster.Tool CLI)"
+  ]
 }

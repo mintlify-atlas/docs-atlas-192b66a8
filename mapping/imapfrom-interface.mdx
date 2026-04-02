@@ -1,0 +1,66 @@
+---
+title: 'IMapFrom interface'
+description: 'Co-locate mapping configuration with your destination model by implementing the IMapFrom<T> interface.'
+---
+
+By default, mapping configuration lives in a startup file or a dedicated configuration class. The `IMapFrom<T>` interface lets you move that configuration into the destination class itself, keeping the mapping logic next to the type it describes.
+
+## Setup
+
+Register the interface scanner once at startup—typically in `Program.cs` or `Startup.cs`:
+
+```csharp
+TypeAdapterConfig.GlobalSettings.ScanInheritedTypes(Assembly.GetExecutingAssembly());
+```
+
+This call scans your assembly for any class that implements `IMapFrom<T>` and applies the configuration it finds.
+
+## Implementing the interface
+
+### With custom configuration
+
+Implement `IMapFrom<TSource>` on your destination class and add a `ConfigureMapping` method to define your mapping rules:
+
+```csharp
+public class InheritedDestinationModel : IMapFrom<SourceModel>
+{
+    public string Type { get; set; }
+    public int Value { get; set; }
+
+    public void ConfigureMapping(TypeAdapterConfig config)
+    {
+        config.NewConfig<SourceModel, InheritedDestinationModel>()
+            .Map(dest => dest.Value, source => int.Parse(source.Value));
+    }
+}
+```
+
+`ConfigureMapping` receives the global `TypeAdapterConfig` instance, so you have access to the full Mapster configuration API.
+
+### Without custom configuration
+
+If your destination maps cleanly from the source by convention and you do not need to customize anything, simply inherit the interface with no additional members:
+
+```csharp
+public class DestinationModel : IMapFrom<SourceModel>
+{
+    public string Type { get; set; }
+}
+```
+
+Mapster registers the mapping between `SourceModel` and `DestinationModel` automatically when the scanner runs.
+
+## When to use IMapFrom
+
+<CardGroup cols={2}>
+  <Card title="Good fit" icon="circle-check">
+    When mapping rules are specific to one destination type and you want to avoid a separate configuration file. Keeps the model and its mapping in the same place.
+  </Card>
+  <Card title="Less ideal" icon="circle-xmark">
+    When the same source type maps to many destinations with shared logic, a centralized config class is easier to maintain and reason about.
+  </Card>
+</CardGroup>
+
+<Tip>
+  `IMapFrom<T>` is particularly useful in feature-based project structures where each feature folder contains its own models and mapping rules.
+</Tip>

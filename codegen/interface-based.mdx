@@ -1,0 +1,175 @@
+---
+title: "Interface-based code generation"
+description: "Define mapping contracts through [Mapper] interfaces when your DTOs already exist and you want Mapster to generate the implementation."
+---
+
+The interface-based approach is for situations where your DTOs already exist and you want Mapster.Tool to generate the mapping implementation rather than the DTO itself. You declare a contract — an interface that describes what mappings you need — and the tool produces the concrete class that satisfies it.
+
+<Tip>
+  Use this strategy when you have hand-crafted DTOs with custom constructors, validation logic, or computed properties that you cannot or do not want to replace with generated classes.
+</Tip>
+
+## Defining a mapper interface
+
+Annotate an interface with `[Mapper]`. Mapster.Tool discovers every interface carrying that attribute in the assembly you pass to the tool.
+
+```csharp
+[Mapper]
+public interface IProductMapper
+{
+    ProductDTO Map(Product product);
+}
+```
+
+Member names are flexible — you can call them anything you like. The tool determines what to generate from the **method signature**, not the name.
+
+## Supported signature patterns
+
+Your interface can mix and match any of the following patterns:
+
+```csharp
+[Mapper]
+public interface ICustomerMapper
+{
+    // Projection expression for IQueryable
+    Expression<Func<Customer, CustomerDTO>> ProjectToDto { get; }
+
+    // Map from POCO to DTO — returns a new DTO instance
+    CustomerDTO MapToDto(Customer customer);
+
+    // Map into an existing object — mutates and returns the destination
+    Customer MapToExisting(CustomerDTO dto, Customer customer);
+}
+```
+
+<Note>
+  Every pattern is optional. Add only the members your application actually needs. The tool generates a concrete implementation for each member it finds.
+</Note>
+
+## Running the tool
+
+Pass the assembly that contains your `[Mapper]` interfaces to the `mapper` command:
+
+```bash
+dotnet mapster mapper -a "bin/Debug/net8.0/MyProject.dll" -o Generated
+```
+
+Mapster.Tool generates a concrete class that implements the interface using Mapster's mapping logic.
+
+## Adding runtime configuration
+
+If you need custom mapping rules (value resolvers, `BeforeMapping`, `AfterMapping`, ignored properties, etc.), implement `IRegister` in the same assembly. The tool will pick it up automatically:
+
+```csharp
+public class MyRegister : IRegister
+{
+    public void Register(TypeAdapterConfig config)
+    {
+        config.NewConfig<TSource, TDestination>();
+    }
+}
+```
+
+For advanced scenarios you can also attach `GenerateMapper` to a `NewConfig` call to control which map types the tool emits:
+
+```csharp
+public class MyRegister : IRegister
+{
+    public void Register(TypeAdapterConfig config)
+    {
+        config.NewConfig<TSource, TDestination>()
+            .GenerateMapper(MapType.Map | MapType.MapToTarget);
+    }
+}
+```
+
+## Full workflow example
+
+<Steps>
+  <Step title="Define your DTOs (these already exist)">
+    ```csharp
+    public class CustomerDTO
+    {
+        public string FullName { get; set; }
+        public string Email { get; set; }
+    }
+    ```
+  </Step>
+  <Step title="Create a mapper interface">
+    ```csharp
+    using Mapster;
+
+    [Mapper]
+    public interface ICustomerMapper
+    {
+        Expression<Func<Customer, CustomerDTO>> ProjectToDto { get; }
+        CustomerDTO MapToDto(Customer customer);
+        Customer MapToExisting(CustomerDTO dto, Customer customer);
+    }
+    ```
+  </Step>
+  <Step title="Add optional runtime configuration">
+    ```csharp
+    public class CustomerMappingRegister : IRegister
+    {
+        public void Register(TypeAdapterConfig config)
+        {
+            config.NewConfig<Customer, CustomerDTO>()
+                .Map(dest => dest.FullName, src => $"{src.FirstName} {src.LastName}");
+        }
+    }
+    ```
+  </Step>
+  <Step title="Build and run the tool">
+    ```bash
+    dotnet build
+    dotnet mapster mapper -a "bin/Debug/net8.0/MyProject.dll" -o Generated
+    ```
+  </Step>
+  <Step title="Register the generated mapper with dependency injection">
+    The generated class implements your interface, so you can register it normally:
+
+    ```csharp
+    builder.Services.AddScoped<ICustomerMapper, CustomerMapper>();
+    ```
+  </Step>
+  <Step title="Inject and use the mapper">
+    ```csharp
+    public class CustomerService
+    {
+        private readonly ICustomerMapper _mapper;
+
+        public CustomerService(ICustomerMapper mapper)
+        {
+            _mapper = mapper;
+        }
+
+        public CustomerDTO GetCustomer(int id)
+        {
+            Customer customer = _repository.FindById(id);
+            return _mapper.MapToDto(customer);
+        }
+
+        public IQueryable<CustomerDTO> QueryCustomers(IQueryable<Customer> query)
+        {
+            return query.Select(_mapper.ProjectToDto);
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+## csproj integration
+
+To regenerate mappers automatically after every build, add the `mapper` command to your MSBuild target:
+
+```xml
+<Target Name="Mapster" AfterTargets="AfterBuild">
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet tool restore" />
+  <Exec WorkingDirectory="$(ProjectDir)" Command="dotnet mapster mapper -a &quot;$(TargetDir)$(ProjectName).dll&quot;" />
+</Target>
+```
+
+<Warning>
+  The tool must read the compiled assembly, so the assembly must be built before the tool runs. The `AfterBuild` hook ensures the correct order. If you trigger the tool manually, run `dotnet build` first.
+</Warning>

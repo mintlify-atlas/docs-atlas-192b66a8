@@ -1,0 +1,105 @@
+---
+title: Diagnostics and performance
+description: Step-into debug Mapster mappings with ExpressionDebugger, inspect generated mapping code with ToScript, and speed up compilation with FastExpressionCompiler.
+---
+
+Two optional packages improve the developer experience around Mapster's expression compilation: `ExpressionDebugger` for debugging and code inspection, and `FastExpressionCompiler` for a production performance boost.
+
+## ExpressionDebugger
+
+`ExpressionDebugger` uses Roslyn to compile mapping expressions to real C# source, enabling Visual Studio step-into debugging and script inspection.
+
+### Installation
+
+```bash
+PM> Install-Package ExpressionDebugger
+```
+
+### Enabling step-into debugging
+
+Add the following line during startup, before any mappings are compiled:
+
+```csharp
+TypeAdapterConfig.GlobalSettings.Compiler = exp => exp.CompileWithDebugInfo();
+```
+
+Now you can step into a mapping call in DEBUG mode:
+
+```csharp
+var dto = poco.Adapt<SimplePoco, SimpleDto>(); // <--- you can step into this function!
+```
+
+<Warning>
+`private`, `protected`, and `internal` members are not accessible in debug mode. Make the members you want to map `public`, or disable debug compilation in those specific cases.
+</Warning>
+
+### Step-into on Visual Studio for Mac
+
+On macOS you may need to emit the compiled file to disk for the debugger to locate the source:
+
+```csharp
+var opt = new ExpressionCompilationOptions { EmitFile = true };
+TypeAdapterConfig.GlobalSettings.Compiler = exp => exp.CompileWithDebugInfo(opt);
+```
+
+```csharp
+var dto = poco.Adapt<SimplePoco, SimpleDto>(); // <-- you can step into this function!
+```
+
+### Inspecting generated mapping code
+
+Use `ToScript` to see exactly what Mapster generates for a mapping, without attaching a debugger:
+
+```csharp
+var script = poco.BuildAdapter()
+                .CreateMapExpression<SimpleDto>()
+                .ToScript();
+```
+
+This returns a `string` containing the C# code Mapster would execute for the mapping. Useful for understanding why a mapping behaves unexpectedly.
+
+### Performance in RELEASE mode
+
+You do not need to remove `CompileWithDebugInfo` for production builds. In RELEASE mode, Roslyn compilation is approximately **2× faster** than the default dynamic compilation:
+
+| Method                    | Mean      | Allocated |
+|---------------------------|-----------|-----------|
+| Mapster 4.1.1             | 115.31 ms | 124.36 MB |
+| Mapster 4.1.1 (Roslyn)    | 53.55 ms  | 124.36 MB |
+
+---
+
+## FastExpressionCompiler
+
+`FastExpressionCompiler` (FEC) is a third-party library that replaces .NET's built-in `LambdaExpression.Compile` with a faster alternative. It delivers a similar ~2× throughput improvement to the Roslyn compiler, with the additional benefit of reduced memory allocation.
+
+### Installation
+
+```bash
+PM> Install-Package FastExpressionCompiler
+```
+
+### Setup
+
+Add the following line during startup:
+
+```csharp
+TypeAdapterConfig.GlobalSettings.Compiler = exp => exp.CompileFast();
+```
+
+That is all the configuration required.
+
+### Performance
+
+| Method                    | Mean      | Allocated |
+|---------------------------|-----------|-----------|
+| Mapster 4.1.1             | 115.31 ms | 124.36 MB |
+| Mapster 4.1.1 (FEC)       | 54.70 ms  | 118.26 MB |
+
+<Tip>
+Choose **FastExpressionCompiler** when you want the lowest memory overhead in production. Choose **ExpressionDebugger** when you want step-into debugging during development — it also performs well in release builds.
+</Tip>
+
+<Note>
+Only one custom compiler can be active at a time. Set `TypeAdapterConfig.GlobalSettings.Compiler` to either `exp.CompileWithDebugInfo()` or `exp.CompileFast()`, not both.
+</Note>

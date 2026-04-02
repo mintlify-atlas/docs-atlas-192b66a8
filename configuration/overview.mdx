@@ -1,0 +1,103 @@
+---
+title: "Configuration overview"
+description: "Learn how to define type mappings with NewConfig and ForType, apply global and rule-based settings, target destination types, and configure open generic mappings."
+---
+
+## Setting per type pair
+
+Use `TypeAdapterConfig<TSource, TDestination>.NewConfig()` to define a mapping between two specific types. Calling `NewConfig` **drops any existing configuration** for that source-to-destination pair and starts fresh.
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>
+    .NewConfig()
+    .Ignore(dest => dest.Age)
+    .Map(dest => dest.FullName,
+          src => string.Format("{0} {1}", src.FirstName, src.LastName));
+```
+
+Use `ForType` when you want to **enhance** an existing mapping rather than replace it. If no mapping exists yet, `ForType` creates one; if one already exists, it adds to it without discarding previous settings.
+
+```csharp
+TypeAdapterConfig<TSource, TDestination>
+    .ForType()
+    .Ignore(dest => dest.Age)
+    .Map(dest => dest.FullName,
+         src => string.Format("{0} {1}", src.FirstName, src.LastName));
+```
+
+<Note>
+Use `NewConfig` when you own the full mapping definition and want a clean slate. Use `ForType` when you are adding to a mapping that may already exist — for example, in a secondary assembly or a test setup.
+</Note>
+
+### Key difference at a glance
+
+| Method | Existing config | Behavior |
+|---|---|---|
+| `NewConfig()` | Present | Drops it and creates new |
+| `NewConfig()` | Absent | Creates new |
+| `ForType()` | Present | Enhances the existing config |
+| `ForType()` | Absent | Creates new |
+
+## Global settings
+
+Apply a setting to **all** mappings by configuring `TypeAdapterConfig.GlobalSettings.Default`. Any individual type mapping can still override the global value.
+
+```csharp
+// Apply to all mappings
+TypeAdapterConfig.GlobalSettings.Default.PreserveReference(true);
+```
+
+```csharp
+// Override for a specific pair
+TypeAdapterConfig<SimplePoco, SimpleDto>.NewConfig().PreserveReference(false);
+```
+
+## Rule-based settings
+
+Use the `When` method on `GlobalSettings` to apply settings only when a condition on the source type, destination type, or map type is met.
+
+<CodeGroup>
+
+```csharp Same source and destination type
+// Ignore the Id property whenever source and destination types are the same
+TypeAdapterConfig.GlobalSettings.When((srcType, destType, mapType) => srcType == destType)
+                               .Ignore("Id");
+```
+
+```csharp Projection-only rule
+// Ignore properties marked with [NotMap] only during query projections
+TypeAdapterConfig.GlobalSettings.When((srcType, destType, mapType) => mapType == MapType.Projection)
+                                .IgnoreAttribute(typeof(NotMapAttribute));
+```
+
+</CodeGroup>
+
+The lambda receives three arguments:
+
+- `srcType` — the source `Type` being mapped from
+- `destType` — the destination `Type` being mapped to
+- `mapType` — one of `MapType.Map`, `MapType.MapToTarget`, or `MapType.Projection`
+
+## Destination type only
+
+Use `ForDestinationType` when you want to target all types that implement or inherit from a particular type, without specifying a source type. This is useful for cross-cutting concerns such as post-mapping validation.
+
+```csharp
+TypeAdapterConfig.GlobalSettings.ForDestinationType<IValidator>()
+                                .AfterMapping(dest => dest.Validate());
+```
+
+<Note>
+`ForDestinationType` applies to **every** destination type assignable to the given type. If a destination class implements `IValidator`, the `AfterMapping` callback runs for that class as well.
+</Note>
+
+## Open generics
+
+When your source or destination types are generic, pass the open generic type definition to `ForType` using `typeof`.
+
+```csharp
+TypeAdapterConfig.GlobalSettings.ForType(typeof(GenericPoco<>), typeof(GenericDto<>))
+                                .Map("value", "Value");
+```
+
+This configuration applies to any closed construction of `GenericPoco<T>` mapped to `GenericDto<T>`, so you do not need to register each concrete type pair individually.
